@@ -145,12 +145,7 @@ outingsRouter.patch("/:id", async (req, res) => {
     if (datesChanged) {
       for (const p of outing.participants) {
         if (!p.rental) continue;
-        await syncParticipant(
-          tx,
-          updated,
-          { id: p.id, memberId: p.memberId, rentalId: p.rental.id, travelMode: p.travelMode },
-          p.rental.items.map((row) => row.itemId),
-        );
+        await syncParticipant(tx, updated, p, { datesChanged: true });
       }
     }
   });
@@ -216,16 +211,18 @@ outingsRouter.post("/:id/return-all", async (req, res) => {
 // Partecipanti (wizard dell'istruttore)
 // ---------------------------------------------------------------------------
 
-const itemIdsSchema = z
+/** Elenco di id senza doppioni. */
+const idList = z
   .array(z.string().min(1))
   .max(20)
-  .default([])
   .transform((ids) => [...new Set(ids)]);
 
 const participantSchema = z.object({
   memberId: z.string().min(1),
-  /** Passo 1 — pezzi da noleggiare; vuoto = nessun noleggio. */
-  itemIds: itemIdsSchema,
+  /** Passo 1, vista rapida — voci di listino noleggiate (Pacchetto Kayak, Giacca, Muta); vuoto = nessun noleggio. */
+  optionIds: idList.default([]),
+  /** Passo 1, dettaglio facoltativo — pezzi specifici assegnati, nelle categorie delle voci scelte. */
+  itemIds: idList.default([]),
   /** Passo 2 — A) furgone, B) solo trasporto attrezzatura, C) autonomo: una sola scelta. */
   travelMode: z.enum(TravelMode),
 });
@@ -235,9 +232,9 @@ const quoteSchema = participantSchema.omit({ memberId: true });
 /** POST /api/outings/:id/quote — riepilogo del wizard: quota individuale senza salvare. */
 outingsRouter.post("/:id/quote", async (req, res) => {
   const { id } = idParams.parse(req.params);
-  const { itemIds, travelMode } = quoteSchema.parse(req.body);
+  const { optionIds, itemIds, travelMode } = quoteSchema.parse(req.body);
   const outing = await loadOuting(id);
-  const quote = await quoteParticipant(prisma, outing, itemIds, travelMode);
+  const quote = await quoteParticipant(prisma, outing, { optionIds, itemIds }, travelMode);
   res.json({
     days: calendarDays(outing.startDate, outing.endDate),
     charges: (quote.rental?.charges ?? []).map((c) => ({
@@ -255,7 +252,7 @@ outingsRouter.post("/:id/quote", async (req, res) => {
 /** POST /api/outings/:id/participants — aggiunge un socio con noleggio e modalità di viaggio. */
 outingsRouter.post("/:id/participants", async (req, res) => {
   const { id } = idParams.parse(req.params);
-  const { memberId, itemIds, travelMode } = participantSchema.parse(req.body);
+  const { memberId, optionIds, itemIds, travelMode } = participantSchema.parse(req.body);
   const outing = await loadOuting(id);
   assertActive(outing);
 
@@ -268,22 +265,19 @@ outingsRouter.post("/:id/participants", async (req, res) => {
   await prisma.$transaction(async (tx) => {
     const participant = await tx.outingParticipant.create({ data: { outingId: id, memberId, travelMode } });
     await assertVanSeats(tx, id, outing.vanSeats);
-    await syncParticipant(tx, outing, { id: participant.id, memberId, rentalId: null, travelMode }, itemIds);
+    await syncParticipant(tx, outing, participant, { spec: { optionIds, itemIds } });
   });
   await respond(res, id, 201);
 });
 
 /**
- * Modifica: ogni campo è facoltativo e un campo assente resta invariato. `itemIds` viene
- * ridefinito senza il default `[]` di participantSchema: con il default, un PATCH che cambia
+ * Modifica: ogni campo è facoltativo e un campo assente resta invariato. Le liste sono
+ * ridefinite senza il default `[]` di participantSchema: con il default, un PATCH che cambia
  * solo la modalità di viaggio cancellerebbe il noleggio.
  */
 const updateParticipantSchema = z.object({
-  itemIds: z
-    .array(z.string().min(1))
-    .max(20)
-    .transform((ids) => [...new Set(ids)])
-    .optional(),
+  optionIds: idList.optional(),
+  itemIds: idList.optional(),
   travelMode: z.enum(TravelMode).optional(),
 });
 
@@ -295,21 +289,23 @@ function findParticipant(outing: LoadedOuting, pid: string) {
 
 outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
-  const { itemIds, travelMode } = updateParticipantSchema.parse(req.body);
+  const { optionIds, itemIds, travelMode } = updateParticipantSchema.parse(req.body);
   const outing = await loadOuting(id);
   assertActive(outing);
   const participant = findParticipant(outing, pid);
 
   const paid = new Set(participant.payments.map((pay) => pay.category));
+  const currentOptions = participant.rental?.charges.map((c) => c.optionId ?? "") ?? [];
   const currentItems = participant.rental?.items.map((row) => row.itemId) ?? [];
-  const itemsChanged =
-    itemIds !== undefined &&
-    (itemIds.length !== currentItems.length || itemIds.some((itemId) => !currentItems.includes(itemId)));
+  const optionsChanged =
+    optionIds !== undefined &&
+    (optionIds.length !== currentOptions.length || optionIds.some((o) => !currentOptions.includes(o)));
   const modeChanged = travelMode !== undefined && travelMode !== participant.travelMode;
 
-  // Una voce riscossa non cambia: prima si annulla la riscossione.
-  if (itemsChanged && paid.has(CollectionCategory.RENTAL)) {
-    throw new HttpError(409, "Noleggio già riscosso: annulla la riscossione prima di cambiare l'attrezzatura");
+  // Una voce riscossa non cambia: prima si annulla la riscossione. Il materiale specifico
+  // invece si può cambiare anche a noleggio riscosso, perché non incide sul prezzo.
+  if (optionsChanged && paid.has(CollectionCategory.RENTAL)) {
+    throw new HttpError(409, "Noleggio già riscosso: annulla la riscossione prima di cambiare le voci noleggiate");
   }
   const currentService = SERVICE_CATEGORY[participant.travelMode];
   if (modeChanged && currentService && paid.has(currentService)) {
@@ -326,17 +322,14 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
       await tx.outingParticipant.update({ where: { id: pid }, data: { travelMode } });
       await assertVanSeats(tx, id, outing.vanSeats);
     }
-    // Il noleggio si ricalcola solo se cambiano i pezzi; quota furgone/trasporto sempre.
+    const rentalTouched = optionIds !== undefined || itemIds !== undefined;
     await syncParticipant(
       tx,
       outing,
-      {
-        id: pid,
-        memberId: participant.memberId,
-        rentalId: participant.rental?.id ?? null,
-        travelMode: travelMode ?? participant.travelMode,
-      },
-      itemsChanged ? itemIds : undefined,
+      { id: pid, memberId: participant.memberId, travelMode: travelMode ?? participant.travelMode },
+      rentalTouched
+        ? { spec: { optionIds: optionIds ?? currentOptions, itemIds: itemIds ?? currentItems } }
+        : {},
     );
   });
   await respond(res, id);

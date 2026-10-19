@@ -140,6 +140,16 @@ function CollectionRow({
         {c.category === "RENTAL" && p.rental && (
           <>
             <div className="flex flex-wrap gap-1.5">
+              {p.rental.charges.map((ch) => (
+                <Badge key={ch.id ?? ch.name} variant="secondary">
+                  {ch.name}
+                </Badge>
+              ))}
+            </div>
+            {p.rental.items.length === 0 ? (
+              <div className="text-xs text-muted-foreground">Materiale non specificato</div>
+            ) : (
+            <div className="flex flex-wrap gap-1.5">
               {p.rental.items.map(({ id, item, returnedAt }) => (
                 <div key={id} className="flex items-center gap-2 rounded-md border py-0.5 pr-2 pl-0.5 text-xs">
                   <ItemThumbnail item={item} className="size-7" />
@@ -150,6 +160,7 @@ function CollectionRow({
                 </div>
               ))}
             </div>
+            )}
             <div className="text-xs text-muted-foreground">
               {p.rental.charges.map((ch) => `${ch.name} ${formatEuro(ch.dailyPrice)} × ${ch.days}`).join(" · ")}
             </div>

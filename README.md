@@ -208,10 +208,15 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
 - **Uscite**: si salvano e restano sempre modificabili (dati, date, partecipanti, attrezzatura,
   trasporto) finché non vengono annullate. Programmata / In corso / Conclusa si ricava dalle
   date; l'unico stato salvato è attiva/annullata. I partecipanti si aggiungono col wizard:
-  socio → noleggio (facoltativo, pezzi liberi nelle date dell'uscita) → modalità di viaggio
-  A/B/C → riepilogo con la quota. Il noleggio del partecipante è un `Rental` di tipo `OUTING`
-  con le date dell'uscita: blocca i pezzi come una prenotazione e compare in "I miei noleggi"
-  del socio. Il rientro del materiale è una spunta (per socio o "tutto rientrato"), annullabile;
+  socio → noleggio → modalità di viaggio A/B/C → riepilogo con la quota. Il noleggio ha due
+  livelli: la **vista rapida** in cui si scelgono le voci di listino (Pacchetto Kayak, Giacca
+  d'acqua, Muta) che determinano il prezzo, senza indicare pezzi e senza bloccarne nessuno;
+  il **dettaglio facoltativo** in cui si assegnano pezzi specifici (solo delle categorie delle
+  voci scelte), che risultano occupati nei giorni dell'uscita. Il noleggio è un `Rental` di
+  tipo `OUTING` con le date dell'uscita, le voci in `RentalCharge` e gli eventuali pezzi in
+  `RentalItem`; compare in "I miei noleggi" del socio. Il materiale specifico si può cambiare
+  anche a noleggio riscosso (non incide sul prezzo); cambiando le date le voci mantengono il
+  prezzo giornaliero applicato. Il rientro del materiale è una spunta (per socio o "tutto rientrato"), annullabile;
   se si cambiano i pezzi di un socio, il suo materiale torna "da far rientrare". Cambiare le
   date sposta i noleggi e ricalcola le quote. Se l'uscita indica i posti sul furgone, i
   partecipanti "A bordo" non possono superarli. Qualunque istruttore può gestire qualunque uscita.
@@ -219,8 +224,8 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   momenti diversi (`OutingPayment`, una per voce, con data e chi l'ha confermata):
   (1) **noleggio**, (2) **trasporto attrezzatura**, (3) **quota furgone + costi vivi**, mostrati
   separati ma riscossi insieme; i costi vivi non hanno importo nel gestionale. Una voce riscossa
-  non può cambiare finché la riscossione non viene annullata: noleggio riscosso → pezzi e date
-  bloccati; furgone o trasporto riscosso → modalità di viaggio bloccata. Per rimuovere un socio
+  non può cambiare finché la riscossione non viene annullata: noleggio riscosso → voci e date
+  bloccate (il materiale specifico resta modificabile); furgone o trasporto riscosso → modalità di viaggio bloccata. Per rimuovere un socio
   o annullare l'uscita vanno prima annullate le riscossioni.
 - **Quota individuale** = noleggio (voci × giorni dell'uscita) + servizio furgone, a tariffa
   fissa per uscita modificabile dall'admin nel Listino (`ServiceFee`):

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Prisma } from "@prisma/client";
 import { calendarDays, parseDate } from "./dates";
-import { computeCharges, type PriceOption } from "./pricing";
+import { chargesForOptions, computeCharges, type PriceOption } from "./pricing";
 
 const listino: PriceOption[] = [
   {
@@ -73,5 +73,22 @@ describe("computeCharges", () => {
       3,
     );
     assert.equal(total.toFixed(2), "13.50");
+  });
+});
+
+describe("chargesForOptions", () => {
+  it("kayak + giacca + muta per 1 giorno = 25 €", () => {
+    const { charges, total } = chargesForOptions(listino, 1);
+    assert.equal(charges.length, 3);
+    assert.equal(total.toFixed(2), "25.00");
+  });
+
+  it("solo giacca per 3 giorni = 15 €", () => {
+    const { total } = chargesForOptions([listino[1]!], 3);
+    assert.equal(total.toFixed(2), "15.00");
+  });
+
+  it("nessuna voce = 0 €", () => {
+    assert.equal(chargesForOptions([], 2).total.toFixed(2), "0.00");
   });
 });

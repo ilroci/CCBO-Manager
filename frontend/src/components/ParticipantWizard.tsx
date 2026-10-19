@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Loader2, Search } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Loader2, Search } from "lucide-react";
 import { FormError } from "@/components/FormError";
 import { ItemPicker } from "@/components/ItemPicker";
 import { Button } from "@/components/ui/button";
@@ -28,8 +28,8 @@ const STEPS = ["Socio", "Noleggio", "Trasporto", "Conferma"] as const;
 
 /**
  * Wizard dell'istruttore per inserire un socio nell'uscita:
- * selezione socio → Passo 1 noleggio attrezzatura (opzionale) → Passo 2 modalità di viaggio
- * (scelta unica A/B/C) → riepilogo con calcolo della quota.
+ * selezione socio → Passo 1 noleggio (voci di listino; il materiale specifico è un dettaglio
+ * facoltativo) → Passo 2 modalità di viaggio (scelta unica A/B/C) → riepilogo con la quota.
  */
 export function ParticipantWizard({
   outing,
@@ -52,10 +52,14 @@ export function ParticipantWizard({
   const [wantsRental, setWantsRental] = useState<boolean>();
   const [items, setItems] = useState<AvailableItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
+  /** Vista rapida: voci di listino noleggiate (Pacchetto Kayak, Giacca, Muta). */
+  const [optionIds, setOptionIds] = useState<Set<string>>(new Set());
+  /** Vista di dettaglio, facoltativa: pezzi specifici assegnati. */
+  const [showDetail, setShowDetail] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [travelMode, setTravelMode] = useState<TravelMode>();
   const [quote, setQuote] = useState<ParticipantQuote>();
-  const { vanSeatFee, transportFee } = usePriceList();
+  const { options, vanSeatFee, transportFee } = usePriceList();
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
 
@@ -69,13 +73,17 @@ export function ParticipantWizard({
       setStep(1);
       setMemberId(target.member.id);
       setWantsRental(Boolean(target.rental));
+      setOptionIds(new Set(target.rental?.charges.flatMap((c) => (c.optionId ? [c.optionId] : [])) ?? []));
       setSelected(new Set(target.rental?.items.map((row) => row.item.id) ?? []));
+      setShowDetail(Boolean(target.rental?.items.length));
       setTravelMode(target.travelMode);
     } else {
       setStep(0);
       setMemberId(undefined);
       setWantsRental(undefined);
+      setOptionIds(new Set());
       setSelected(new Set());
+      setShowDetail(false);
       setTravelMode(undefined);
       api
         .get<{ users: User[] }>("/api/users", { params: { active: "true" } })
@@ -84,9 +92,10 @@ export function ParticipantWizard({
     }
   }, [open, target]);
 
-  // Pezzi liberi nelle date dell'uscita (in modifica restano selezionabili quelli del socio).
+  // Pezzi liberi nelle date dell'uscita, solo se si apre il dettaglio
+  // (in modifica restano selezionabili quelli del socio).
   useEffect(() => {
-    if (!open || !wantsRental) return;
+    if (!open || !wantsRental || !showDetail) return;
     setLoadingItems(true);
     api
       .get<{ items: AvailableItem[] }>("/api/rentals/availability", {
@@ -95,16 +104,20 @@ export function ParticipantWizard({
       .then(({ data }) => setItems(data.items))
       .catch((err) => setError(getErrorMessage(err)))
       .finally(() => setLoadingItems(false));
-  }, [open, wantsRental, outing.startDate, outing.endDate, target]);
+  }, [open, wantsRental, showDetail, outing.startDate, outing.endDate, target]);
 
+  const chosenOptions = wantsRental ? [...optionIds] : [];
   const itemIds = wantsRental ? [...selected] : [];
+  // Il materiale specifico è limitato alle categorie delle voci scelte.
+  const coveredCategories = new Set(options.filter((o) => optionIds.has(o.id)).flatMap((o) => o.categories));
+  const detailItems = items.filter((item) => coveredCategories.has(item.category));
 
   // Calcolo della quota all'arrivo sul riepilogo (dipende solo dal passo: i dati sono già fissati).
   useEffect(() => {
     if (step !== 3) return;
     setQuote(undefined);
     api
-      .post<ParticipantQuote>(`/api/outings/${outing.id}/quote`, { itemIds, travelMode })
+      .post<ParticipantQuote>(`/api/outings/${outing.id}/quote`, { optionIds: chosenOptions, itemIds, travelMode })
       .then(({ data }) => setQuote(data))
       .catch((err) => setError(getErrorMessage(err)));
   }, [step]);
@@ -120,7 +133,9 @@ export function ParticipantWizard({
   }, [members, memberQuery, outing.participants]);
 
   const member = target?.member ?? members.find((m) => m.id === memberId);
-  const selectedItems = items.filter((item) => selected.has(item.id));
+  // Pezzi selezionati: dall'elenco caricato oppure, se il dettaglio è chiuso, dal noleggio attuale.
+  const knownItems = new Map([...(target?.rental?.items.map((r) => r.item) ?? []), ...items].map((i) => [i.id, i]));
+  const selectedItems = [...selected].flatMap((itemId) => knownItems.get(itemId) ?? []);
 
   // Posti sul furgone ancora liberi (chi è già a bordo e viene modificato non conta).
   const aboardOthers = outing.participants.filter((p) => p.travelMode === "VAN" && p.id !== target?.id).length;
@@ -128,8 +143,21 @@ export function ParticipantWizard({
 
   const canNext =
     (step === 0 && memberId) ||
-    (step === 1 && wantsRental !== undefined && (!wantsRental || selected.size > 0)) ||
+    (step === 1 && (wantsRental === false || (wantsRental === true && optionIds.size > 0))) ||
     (step === 2 && travelMode);
+
+  function toggleOption(id: string) {
+    const next = new Set(optionIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setOptionIds(next);
+    // Togli i pezzi che non rientrano più nelle voci scelte.
+    const covered = new Set(options.filter((o) => next.has(o.id)).flatMap((o) => o.categories));
+    setSelected((current) => new Set([...current].filter((itemId) => {
+      const item = knownItems.get(itemId);
+      return item ? covered.has(item.category) : false;
+    })));
+  }
 
   function toggle(id: string) {
     setSelected((current) => {
@@ -146,11 +174,14 @@ export function ParticipantWizard({
     try {
       const { data } = isEdit
         ? await api.patch<{ outing: Outing }>(`/api/outings/${outing.id}/participants/${target!.id}`, {
-            ...(rentalLocked ? {} : { itemIds }),
+            // A noleggio riscosso le voci non cambiano; il materiale specifico sì.
+            ...(rentalLocked ? {} : { optionIds: chosenOptions }),
+            itemIds,
             travelMode,
           })
         : await api.post<{ outing: Outing }>(`/api/outings/${outing.id}/participants`, {
             memberId,
+            optionIds: chosenOptions,
             itemIds,
             travelMode,
           });
@@ -254,48 +285,106 @@ export function ParticipantWizard({
           </div>
         )}
 
-        {step === 1 && rentalLocked && (
-          <div className="grid gap-3 text-sm">
-            <Notice>Il noleggio è già stato riscosso: per cambiare l'attrezzatura annulla prima la riscossione.</Notice>
-            <ul className="grid gap-0.5 text-muted-foreground">
-              {target?.rental?.items.map(({ item }) => (
-                <li key={item.id}>
-                  {CATEGORY_LABELS[item.category]}: {item.brand} {item.model}{" "}
-                  <span className="font-mono text-xs">{item.serialNumber}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {step === 1 && !rentalLocked && (
+        {step === 1 && (
           <div className="grid gap-4">
-            <p className="text-sm font-medium">Il socio deve noleggiare attrezzatura del club per l'uscita?</p>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { value: true, label: "Sì, noleggia" },
-                { value: false, label: "No, ha la sua" },
-              ].map(({ value, label }) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setWantsRental(value)}
-                  aria-pressed={wantsRental === value}
-                  className={cn(
-                    "rounded-md border px-3 py-2 text-sm transition-colors",
-                    wantsRental === value ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-accent/50",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {wantsRental &&
-              (loadingItems ? (
-                <Loader2 className="mx-auto size-6 animate-spin text-muted-foreground" />
-              ) : (
-                <ItemPicker items={items} selected={selected} onToggle={toggle} />
-              ))}
+            {rentalLocked ? (
+              <Notice>
+                Il noleggio è già stato riscosso: le voci non si possono cambiare. Puoi comunque specificare il
+                materiale.
+              </Notice>
+            ) : (
+              <>
+                <p className="text-sm font-medium">Il socio deve noleggiare attrezzatura del club per l'uscita?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: true, label: "Sì, noleggia" },
+                    { value: false, label: "No, ha la sua" },
+                  ].map(({ value, label }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setWantsRental(value)}
+                      aria-pressed={wantsRental === value}
+                      className={cn(
+                        "rounded-md border px-3 py-2 text-sm transition-colors",
+                        wantsRental === value ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-accent/50",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {wantsRental && (
+              <>
+                <div className="grid gap-2">
+                  <p className="text-sm font-medium">Cosa noleggia?</p>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {options.map((option) => {
+                      const on = optionIds.has(option.id);
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          disabled={rentalLocked}
+                          onClick={() => toggleOption(option.id)}
+                          aria-pressed={on}
+                          className={cn(
+                            "flex items-start gap-2 rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70",
+                            on ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-accent/50",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border",
+                              on && "border-primary bg-primary text-primary-foreground",
+                            )}
+                          >
+                            {on && <Check className="size-3.5" />}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block font-medium">{option.name}</span>
+                            <span className="block text-sm tabular-nums">{formatEuro(option.dailyPrice)} / giorno</span>
+                            {option.description && (
+                              <span className="block text-xs text-muted-foreground">{option.description}</span>
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {optionIds.size > 0 && (
+                  <div className="grid gap-3 rounded-lg border p-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowDetail(!showDetail)}
+                      className="flex items-center justify-between gap-2 text-left text-sm"
+                      aria-expanded={showDetail}
+                    >
+                      <span>
+                        <span className="font-medium">Specifica il materiale (facoltativo)</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {selected.size > 0
+                            ? `${selected.size} ${selected.size === 1 ? "pezzo assegnato" : "pezzi assegnati"}: risultano occupati nei giorni dell'uscita.`
+                            : "Senza dettaglio nessun pezzo viene bloccato: resta segnato solo cosa il socio dovrà pagare."}
+                        </span>
+                      </span>
+                      {showDetail ? <ChevronUp className="size-4 shrink-0" /> : <ChevronDown className="size-4 shrink-0" />}
+                    </button>
+                    {showDetail &&
+                      (loadingItems ? (
+                        <Loader2 className="mx-auto size-6 animate-spin text-muted-foreground" />
+                      ) : (
+                        <ItemPicker items={detailItems} selected={selected} onToggle={toggle} />
+                      ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -365,18 +454,18 @@ export function ParticipantWizard({
           <div className="grid gap-4 text-sm">
             <div className="grid gap-1">
               <div className="font-medium">Noleggio attrezzatura</div>
-              {itemIds.length === 0 ? (
+              {chosenOptions.length === 0 ? (
                 <div className="text-muted-foreground">Nessun noleggio</div>
+              ) : selectedItems.length === 0 ? (
+                <div className="text-muted-foreground">Materiale non specificato</div>
               ) : (
                 <ul className="grid gap-0.5 text-muted-foreground">
-                  {(selectedItems.length > 0 ? selectedItems : (target?.rental?.items.map((r) => r.item) ?? [])).map(
-                    (item) => (
-                      <li key={item.id}>
-                        {CATEGORY_LABELS[item.category]}: {item.brand} {item.model}{" "}
-                        <span className="font-mono text-xs">{item.serialNumber}</span>
-                      </li>
-                    ),
-                  )}
+                  {selectedItems.map((item) => (
+                    <li key={item.id}>
+                      {CATEGORY_LABELS[item.category]}: {item.brand} {item.model}{" "}
+                      <span className="font-mono text-xs">{item.serialNumber}</span>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>

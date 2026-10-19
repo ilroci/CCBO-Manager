@@ -42,3 +42,22 @@ export function computeCharges(
   const total = charges.reduce((sum, charge) => sum.add(charge.amount), new Prisma.Decimal(0));
   return { charges, total };
 }
+
+/**
+ * Voci scelte esplicitamente (noleggio "rapido" delle uscite, senza indicare i pezzi):
+ * ogni voce si paga una volta, moltiplicata per i giorni.
+ */
+export function chargesForOptions(
+  options: PriceOption[],
+  days: number,
+): { charges: Charge[]; total: Prisma.Decimal } {
+  const charges = options.map((option) => ({
+    optionId: option.id,
+    name: option.name,
+    dailyPrice: option.dailyPrice,
+    days,
+    amount: option.dailyPrice.mul(days),
+  }));
+  const total = charges.reduce((sum, charge) => sum.add(charge.amount), new Prisma.Decimal(0));
+  return { charges, total };
+}

@@ -9,8 +9,10 @@ import {
 } from "@prisma/client";
 import { calendarDays, formatDate } from "./dates";
 import { itemInclude, toItemDto } from "./equipment";
-import { HttpError } from "./http-error";
-import { lockAndAssertAvailable, quoteRental } from "./rentals";
+import { badRequest, HttpError } from "./http-error";
+import { CATEGORY_LABELS } from "./labels";
+import { chargesForOptions } from "./pricing";
+import { lockAndAssertAvailable } from "./rentals";
 
 type Db = Prisma.TransactionClient;
 
@@ -33,18 +35,54 @@ export async function serviceAmounts(db: Db, travelMode: TravelMode) {
 }
 
 /**
+ * Noleggio di un partecipante: le voci di listino scelte (vista rapida, determinano il prezzo)
+ * e, facoltativamente, i pezzi specifici assegnati (vista di dettaglio, bloccano la disponibilità).
+ */
+export interface RentalSpec {
+  optionIds: string[];
+  itemIds: string[];
+}
+
+/** Verifica voci e pezzi: i pezzi devono rientrare nelle categorie delle voci scelte. */
+async function resolveRentalSpec(db: Db, spec: RentalSpec) {
+  if (spec.optionIds.length === 0) {
+    if (spec.itemIds.length > 0) throw badRequest("Scegli almeno una voce di noleggio prima di indicare il materiale");
+    return null;
+  }
+  const options = await db.rentalOption.findMany({
+    where: { id: { in: spec.optionIds } },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+  if (options.length !== spec.optionIds.length) throw badRequest("Voce di listino non trovata");
+
+  const items = await db.equipmentItem.findMany({ where: { id: { in: spec.itemIds } } });
+  if (items.length !== spec.itemIds.length) throw badRequest("Uno o più pezzi non esistono");
+  const covered = new Set(options.flatMap((option) => option.categories));
+  for (const item of items) {
+    if (item.isArchived) throw badRequest(`Il pezzo ${item.serialNumber} è archiviato`);
+    if (!covered.has(item.category)) {
+      throw badRequest(`Il pezzo ${item.serialNumber} (${CATEGORY_LABELS[item.category]}) non rientra nelle voci scelte`);
+    }
+  }
+  return { options, items };
+}
+
+/**
  * Quota individuale di un partecipante, senza salvare nulla (riepilogo del wizard):
- * (1) noleggio = voci di listino × giorni dell'uscita;
+ * (1) noleggio = voci di listino scelte × giorni dell'uscita;
  * (2) solo trasporto attrezzatura = tariffa fissa per uscita;
  * (3) quota furgone = tariffa fissa per uscita, più i costi vivi che non hanno importo.
  */
 export async function quoteParticipant(
   db: Db,
   outing: Pick<Outing, "startDate" | "endDate">,
-  itemIds: string[],
+  spec: RentalSpec,
   travelMode: TravelMode,
 ) {
-  const rental = itemIds.length > 0 ? await quoteRental(db, itemIds, outing.startDate, outing.endDate) : null;
+  const resolved = await resolveRentalSpec(db, spec);
+  const rental = resolved
+    ? chargesForOptions(resolved.options, calendarDays(outing.startDate, outing.endDate))
+    : null;
   const rentalAmount = rental?.total ?? ZERO;
   const services = await serviceAmounts(db, travelMode);
   return {
@@ -55,78 +93,96 @@ export async function quoteParticipant(
   };
 }
 
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((value) => b.includes(value));
+
 /**
  * Salva noleggio e quote di un partecipante.
- * - `itemIds` presente: crea/aggiorna/elimina il noleggio (opzione 1) con le date dell'uscita
- *   e ne ricalcola il prezzo; se i pezzi non cambiano, il rientro già segnato resta.
- * - `itemIds` assente: il noleggio e il suo importo restano com'erano (es. cambio di sola
- *   modalità di viaggio, magari con il noleggio già riscosso).
+ * - `spec`: voci e pezzi scelti nel wizard. Le voci si riprezzano col listino attuale solo se
+ *   cambiano; i pezzi si possono cambiare senza toccare il prezzo (anche a noleggio riscosso).
+ *   Pezzi diversi tornano "da far rientrare".
+ * - `datesChanged`: stesse voci, prezzo giornaliero già applicato × nuovi giorni.
+ * - nessuno dei due: il noleggio resta com'è (es. cambio di sola modalità di viaggio).
  * Quota furgone / trasporto e totale si ricalcolano sempre dalla modalità di viaggio.
  */
 export async function syncParticipant(
   tx: Db,
   outing: Pick<Outing, "startDate" | "endDate">,
-  participant: { id: string; memberId: string; rentalId: string | null; travelMode: TravelMode },
-  itemIds?: string[],
+  participant: { id: string; memberId: string; travelMode: TravelMode },
+  change: { spec?: RentalSpec; datesChanged?: boolean } = {},
 ) {
-  let rentalAmount: Prisma.Decimal | undefined;
+  const { startDate, endDate } = outing;
+  const days = calendarDays(startDate, endDate);
+  const existing = await tx.rental.findUnique({
+    where: { participantId: participant.id },
+    include: { items: true, charges: true },
+  });
 
-  if (itemIds) {
-    if (itemIds.length > 0) {
-      await lockAndAssertAvailable(tx, itemIds, outing.startDate, outing.endDate, participant.rentalId ?? undefined);
-    }
-    const rental = itemIds.length > 0 ? await quoteRental(tx, itemIds, outing.startDate, outing.endDate) : null;
-    rentalAmount = rental?.total ?? ZERO;
-
-    if (!rental) {
-      if (participant.rentalId) await tx.rental.delete({ where: { id: participant.rentalId } });
-    } else if (!participant.rentalId) {
-      await tx.rental.create({
-        data: {
-          kind: RentalKind.OUTING,
-          memberId: participant.memberId,
-          participantId: participant.id,
-          startDate: outing.startDate,
-          endDate: outing.endDate,
-          total: rental.total,
-          items: { create: itemIds.map((itemId) => ({ itemId })) },
-          charges: { create: rental.charges },
-        },
-      });
+  if (change.spec) {
+    const resolved = await resolveRentalSpec(tx, change.spec);
+    if (!resolved) {
+      if (existing) await tx.rental.delete({ where: { id: existing.id } });
     } else {
-      const rentalId = participant.rentalId;
-      await tx.rentalCharge.deleteMany({ where: { rentalId } });
-      const current = await tx.rentalItem.findMany({ where: { rentalId }, select: { itemId: true } });
-      const sameItems = current.length === itemIds.length && current.every((row) => itemIds.includes(row.itemId));
-      // Pezzi diversi: si ricreano e il materiale torna "da far rientrare".
-      if (!sameItems) await tx.rentalItem.deleteMany({ where: { rentalId } });
-      await tx.rental.update({
-        where: { id: rentalId },
-        data: {
-          startDate: outing.startDate,
-          endDate: outing.endDate,
-          total: rental.total,
-          charges: { create: rental.charges },
-          ...(sameItems
-            ? {}
-            : { status: RentalStatus.RESERVED, items: { create: itemIds.map((itemId) => ({ itemId })) } }),
-        },
-      });
+      const itemIds = change.spec.itemIds;
+      if (itemIds.length > 0) await lockAndAssertAvailable(tx, itemIds, startDate, endDate, existing?.id);
+
+      if (!existing) {
+        const { charges, total } = chargesForOptions(resolved.options, days);
+        await tx.rental.create({
+          data: {
+            kind: RentalKind.OUTING,
+            memberId: participant.memberId,
+            participantId: participant.id,
+            startDate,
+            endDate,
+            total,
+            items: { create: itemIds.map((itemId) => ({ itemId })) },
+            charges: { create: charges },
+          },
+        });
+      } else {
+        const optionsChanged = !sameSet(
+          existing.charges.map((c) => c.optionId ?? ""),
+          change.spec.optionIds,
+        );
+        const itemsChanged = !sameSet(
+          existing.items.map((row) => row.itemId),
+          itemIds,
+        );
+        if (optionsChanged) {
+          const { charges, total } = chargesForOptions(resolved.options, days);
+          await tx.rentalCharge.deleteMany({ where: { rentalId: existing.id } });
+          await tx.rental.update({ where: { id: existing.id }, data: { total, charges: { create: charges } } });
+        }
+        if (itemsChanged) {
+          await tx.rentalItem.deleteMany({ where: { rentalId: existing.id } });
+          await tx.rental.update({
+            where: { id: existing.id },
+            data: { status: RentalStatus.RESERVED, items: { create: itemIds.map((itemId) => ({ itemId })) } },
+          });
+        }
+      }
     }
+  } else if (change.datesChanged && existing) {
+    const itemIds = existing.items.map((row) => row.itemId);
+    if (itemIds.length > 0) await lockAndAssertAvailable(tx, itemIds, startDate, endDate, existing.id);
+    let total = ZERO;
+    for (const charge of existing.charges) {
+      const amount = charge.dailyPrice.mul(days);
+      total = total.add(amount);
+      await tx.rentalCharge.update({ where: { id: charge.id }, data: { days, amount } });
+    }
+    await tx.rental.update({ where: { id: existing.id }, data: { startDate, endDate, total } });
   }
 
-  const current = await tx.outingParticipant.findUniqueOrThrow({
-    where: { id: participant.id },
-    select: { rentalAmount: true },
-  });
-  const finalRental = rentalAmount ?? current.rentalAmount;
+  const rental = await tx.rental.findUnique({ where: { participantId: participant.id }, select: { total: true } });
+  const rentalAmount = rental?.total ?? ZERO;
   const services = await serviceAmounts(tx, participant.travelMode);
   await tx.outingParticipant.update({
     where: { id: participant.id },
     data: {
-      rentalAmount: finalRental,
+      rentalAmount,
       ...services,
-      totalAmount: finalRental.add(services.transportAmount).add(services.vanSeatAmount),
+      totalAmount: rentalAmount.add(services.transportAmount).add(services.vanSeatAmount),
     },
   });
 }
