@@ -32,8 +32,8 @@ docker compose up --build
 | API | http://localhost:3000 · `GET /health` |
 | PostgreSQL | `localhost:5432` · utente/password/db `canoa` |
 
-All'avvio il backend applica le migrazioni ed esegue il seed, che crea un utente per
-ruolo (password `canoa1234`):
+All'avvio il backend applica le migrazioni ed esegue il seed, che crea 21 pezzi di
+attrezzatura di esempio e un utente per ruolo (password `canoa1234`):
 
 | Email | Ruolo |
 |---|---|
@@ -122,8 +122,17 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `GET` | `/api/users/:id` | Admin |
 | `POST` | `/api/users` | Admin |
 | `PATCH` | `/api/users/:id` | Admin |
+| `GET` | `/api/equipment?category=&status=&q=&includeArchived=` | autenticato (archiviati solo Admin) |
+| `GET` | `/api/equipment/:id` | autenticato |
+| `POST` | `/api/equipment` | Admin |
+| `PATCH` | `/api/equipment/:id` | Admin (anche `isArchived`) |
+| `DELETE` | `/api/equipment/:id` | Admin, solo pezzi senza storico noleggi |
 
-Errori: `{ error, details? }` con 400 (validazione), 401, 403, 404, 409 (email già usata).
+Errori: `{ error, details? }` con 400 (validazione), 401, 403, 404, 409 (email o numero di
+serie già in uso, eliminazione di un pezzo con storico).
+
+Lo stato di un pezzo (Disponibile / In Noleggio) non si modifica a mano: lo aggiorneranno
+prenotazioni e uscite. I pezzi dismessi si archiviano, così lo storico noleggi resta.
 
 ## Deploy su Render + Neon
 
@@ -141,7 +150,7 @@ disattiva o modifica gli utenti demo dall'app:
 
 ```bash
 cd backend
-DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" npm run seed
+DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=false npm run seed
 ```
 
 **Frontend (Static Site)**, Root Directory `frontend`

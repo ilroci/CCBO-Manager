@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth, RequireRole } from "@/auth/guards";
 import { NAV_ITEMS } from "@/auth/permissions";
 import { AppLayout } from "@/components/AppLayout";
+import { CatalogPage } from "@/pages/CatalogPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
@@ -10,6 +11,7 @@ import { UsersPage } from "@/pages/UsersPage";
 /** Pagine già implementate; le altre voci di NAV_ITEMS mostrano un segnaposto. */
 const PAGES: Record<string, React.ReactNode> = {
   "/": <DashboardPage />,
+  "/catalog": <CatalogPage />,
   "/users": <UsersPage />,
 };
 
