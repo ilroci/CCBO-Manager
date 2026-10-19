@@ -1,0 +1,110 @@
+Progetta un'applicazione web per la gestione dell'inventario, delle prenotazioni e dei noleggi dell'attrezzatura di un Canoa Club.
+
+### 1. Gestione Utenti e Ruoli
+Prevedi tre ruoli con autorizzazioni specifiche (RBAC):
+- Amministratore: Accesso completo a tutte le funzionalità del sistema (CRUD utenti, inventario, uscite, storico noleggi e configurazione del listino prezzi).
+- Istruttore: Gestisce le uscite ufficiali del club. Può aprire un'uscita, associare i soci partecipanti con la relativa attrezzatura, registrare il rientro del materiale, calcolare il costo singolo e totale dell'uscita, e confermare l'incasso.
+- Socio: Può consultare il catalogo dei materiali disponibili, prenotare autonomamente l'attrezzatura per uscite personali e visualizzare lo storico dei propri noleggi.
+
+### 2. Modello Dati, Inventario e Listino Prezzi
+Gestisci le seguenti categorie di attrezzatura: Canoe, Pagaie, Caschi, Giacche d'acqua, Paraspruzzi, Mute.
+- Ogni singolo item (senza eccezioni) possiede un numero di serie univoco che lo identifica a sistema.
+- Per ogni item memorizza: ID, Categoria, Marca, Modello, Taglia/Volume, Numero di Serie Univoco, URL Foto, Descrizione e Stato attuale ('Disponibile','In Noleggio').
+- Gestione Listino Prezzi: Prevedi una funzionalità (riservata all'Amministratore) per configurare il listino prezzi dei noleggi (es. tariffe orarie, giornaliere o per singola uscita associate alle varie categorie/tipologie di attrezzatura).
+
+### 3. Logica di Noleggio, Prenotazioni e Uscite di Club
+- Prenotazione Autonoma del Socio: Il socio può prenotare direttamente l'attrezzatura disponibile per un noleggio personale.
+
+### 4. gestione uscita
+🎒 Servizi e Risorse Includibili nell'Uscita
+Le opzioni di costo/servizio disponibili per ciascun socio all'interno di un'uscita sono:
+Noleggio Attrezzatura: Assegnazione e noleggio dei singoli articoli/pezzi di attrezzatura del club.
+Trasporto Attrezzatura: Servizio di solo carico e trasporto dell'attrezzatura (es. canoa personale o del club) sul furgone per chi non viaggia a bordo del veicolo.
+Quota Furgone + Spese Vive Furgone: Riservato a chi viaggia fisicamente a bordo del furgone (include sia la quota utilizzo furgone che la ripartizione/quota delle spese vive di carburante e pedaggi autostradali).
+⚠️ Regola di Esclusività Mutua
+Le opzioni (2) Trasporto Attrezzatura e (3) Quota Furgone + Spese Vive sono mutualmente esclusive:
+Un socio che viaggia sul furgone usufruisce della opzione (3) (il trasporto dell'attrezzatura è già compreso nell'essere a bordo).
+Un socio che non sale sul furgone ma fa trasportare la propria attrezzatura dal furgone usufruisce della opzione (2).
+Un socio che si sposta in autonomia e con mezzi propri (senza trasportare attrezzatura tramite furgone) non selezionerà né la (2) né la (3).
+L'opzione (1) Noleggio Attrezzatura può essere cumulata sia con la (2), sia con la (3), oppure selezionata da sola.
+📋 Procedura Guidata per l'Inserimento del Socio nell'Uscita
+Quando l'Istruttore aggiunge un socio a un'uscita, il sistema attiva un flusso/wizard di configurazione:
+Selezione del Socio:
+L'istruttore seleziona il socio dall'elenco iscritti.
+Passo 1 — Noleggio Attrezzatura (Opzionale):
+Domanda: Il socio necessita di noleggiare attrezzatura del club per l'uscita?
+Azione: Se Sì, seleziona i pezzi di attrezzatura da assegnare (canoa, pagaia, salvagente, casco, spraydeck, ecc.). Se No, prosegue al passaggio successivo.
+Passo 2 — Modalità di Trasporto e Furgone (Selezione Esclusiva):
+Domanda: Qual è la modalità di viaggio/trasporto del socio per questa uscita?
+Opzioni (Selezione singola/Radio button):
+A) Salito sul Furgone (Quota Furgone + Spese Vive): Il socio viaggia a bordo del furgone. Verrà addebitata la quota furgone e la quota/ripartizione delle spese vive (benzina/caselli).
+B) Solo Trasporto Attrezzatura (Trasporto Attrezzatura): Il socio viaggia con mezzo proprio ma fa caricare la canoa/attrezzatura sul furgone. Verrà addebitata la sola tariffa di trasporto attrezzatura.
+C) Nessun servizio furgone / Autonomo: Il socio si sposta in autonomia con il proprio mezzo e trasporta da sé la propria attrezzatura (nessun costo legato al furgone).
+Conferma e Calcolo Automatico:
+Il sistema riepiloga le voci assegnate e calcola immediatamente la quota individuale del socio applicando i listini e le regole impostate.
+
+
+
+
+stack tecnologico:
+Sei uno sviluppatore full-stack senior. Devo realizzare un gestionale web moderno, leggero, reattivo, manutenibile e fortemente tipizzato.
+
+Devi guidarmi nella creazione dell'applicazione strutturando il codice secondo questo specifico STACK TECNOLOGICO DETTAGLIATO:
+
+======================================================================
+1. BACKEND ARCHITECTURE & STACK (Cartella: /backend)
+======================================================================
+- Runtime Environment: Node.js (Ambiente di esecuzione JavaScript/TypeScript server-side asincrono ed efficiente per I/O).
+- Linguaggio: TypeScript (Strongly typed, per garantire coerenza nei tipi di dati e contratti API condivisi).
+- Web Framework: Express.js (Framework minimale per la gestione delle rotte REST API, gestione middleware, richieste/risposte JSON ed endpoint di healthcheck).
+- Database Relazionale: PostgreSQL (Ospitato su Neon.tech via serverless cloud).
+- ORM (Object-Relational Mapping): Prisma ORM (Per la modellazione delle tabelle tramite `schema.prisma`, gestione delle migrazioni automatizzate e query fortemente tipizzate senza SQL grezzo).
+- Sicurezza & Middleware: `cors` (per consentire le chiamate Cross-Origin dal dominio del frontend) e `dotenv` per le variabili d'ambiente.
+
+======================================================================
+2. FRONTEND ARCHITECTURE & STACK (Cartella: /frontend)
+======================================================================
+- UI Library: React (Libreria a componenti riutilizzabili e reattivi per la gestione dello stato e del DOM).
+- Linguaggio: TypeScript (Integrazione con i tipi di React per props, state e modelli dati ricevuti dalle API).
+- Build Tool & Dev Server: Vite (Bundler ad altissime prestazioni per la compilazione rapida e l'Hot Module Replacement in sviluppo).
+- CSS Framework: Tailwind CSS (Framework CSS utility-first per layout reattivi, moderni e responsive direttamente nei componenti).
+- Component Library: Shadcn UI (Componenti d'interfaccia accessibili e altamente personalizzabili come tabelle, modali, form e menu a tendina basati su Tailwind CSS).
+- Icone & Utilities: Lucide React (per le icone della dashboard) e Axios/Fetch per le chiamate HTTP al backend.
+
+======================================================================
+3. DIRETTIVE DI DEPLOYMENT & COMPATIBILITÀ (Render + Neon)
+======================================================================
+L'applicazione verrà pubblicata gratuitamente su RENDER (Backend + Frontend) e NEON (Database PostgreSQL).
+
+Configura la struttura del repository e i file di configurazione con le seguenti regole rigorose:
+
+A. Struttura Repository:
+   Dividi il progetto nelle due cartelle radice `/backend` e `/frontend`.
+
+B. Requisiti Backend (Render Web Service):
+   - Nel `package.json` del backend, imposta gli script:
+     "build": "tsc && npx prisma generate",
+     "start": "node dist/server.js"
+   - Configura Express abilitando `cors` per accettare richieste dall'origine memorizzata nella variabile d'ambiente `FRONTEND_URL`.
+   - In `/backend/prisma/schema.prisma`, definisci:
+     datasource db {
+       provider = "postgresql"
+       url      = env("DATABASE_URL")
+     }
+   - Crea una rotta di test `GET /health` che risponda con status 200 `{ status: "ok" }`.
+
+C. Requisiti Frontend (Render Static Site):
+   - In `/frontend`, configura client/servizi API per leggere l'URL del backend da `import.meta.env.VITE_API_URL`.
+   - Per garantire il routing SPA (Single Page Application) durante il refresh delle pagine su Render, crea il file `/frontend/public/_redirects` contenente:
+     /*  /index.html  200
+
+D. Variabili d'Ambiente (.env.example):
+   - Genera un file `.env.example` in `/backend`:
+     PORT=3000
+     DATABASE_URL="postgresql://user:pass@ep-xyz.region.aws.neon.tech/neondb?sslmode=require"
+     FRONTEND_URL="https://tuo-frontend.onrender.com"
+   - Genera un file `.env.example` in `/frontend`:
+     VITE_API_URL="https://tuo-backend.onrender.com"
+
+Inizia creando lo scheletro delle cartelle, i file di configurazione (`package.json`, `tsconfig.json`, `.env.example`) per entrambi i moduli e la prima bozza di `schema.prisma`.
+

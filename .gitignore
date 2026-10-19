@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+*:Zone.Identifier
+# Certificati CA aziendali/locali: servono solo sulla macchina che li usa
+docker/certs/*
+!docker/certs/README.md

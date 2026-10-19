@@ -1,0 +1,288 @@
+// =====================================================================
+// Canoa Club — schema dati (bozza v0.1)
+// Identificatori in inglese, documentazione in italiano.
+// Importi monetari: Decimal(10,2), mai Float.
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------
+// ENUM
+// ---------------------------------------------------------------------
+
+/// Ruoli RBAC
+enum Role {
+  ADMIN       // Amministratore: accesso completo
+  INSTRUCTOR  // Istruttore: gestisce le uscite di club
+  MEMBER      // Socio: catalogo, prenotazioni personali, storico
+}
+
+/// Categorie di attrezzatura gestite
+enum EquipmentCategory {
+  CANOE        // Canoe
+  PADDLE       // Pagaie
+  HELMET       // Caschi
+  WATER_JACKET // Giacche d'acqua
+  SPRAY_DECK   // Paraspruzzi
+  WETSUIT      // Mute
+}
+
+/// Stato attuale del singolo pezzo
+enum ItemStatus {
+  AVAILABLE // Disponibile
+  RENTED    // In Noleggio
+}
+
+/// Unità di tariffazione del listino attrezzatura
+enum PricingUnit {
+  HOURLY     // tariffa oraria
+  DAILY      // tariffa giornaliera
+  PER_OUTING // tariffa forfettaria per singola uscita
+}
+
+/// Servizi legati al furgone (voci di listino non attrezzatura)
+enum ServiceType {
+  EQUIPMENT_TRANSPORT // (2) Solo trasporto attrezzatura sul furgone
+  VAN_SEAT            // (3) Quota utilizzo furgone per chi viaggia a bordo
+}
+
+/// Modalità di viaggio del socio in un'uscita (Passo 2 del wizard).
+/// Codifica a livello di dato l'esclusività mutua tra opzione (2) e (3):
+/// un partecipante ha UNA sola modalità.
+enum TravelMode {
+  VAN            // A) A bordo del furgone → quota furgone + spese vive
+  TRANSPORT_ONLY // B) Mezzo proprio, attrezzatura sul furgone → tariffa trasporto
+  AUTONOMOUS     // C) Autonomo → nessun costo furgone
+}
+
+enum OutingStatus {
+  PLANNED   // creata, iscrizioni aperte
+  ONGOING   // materiale consegnato, uscita in corso
+  COMPLETED // materiale rientrato, costi consolidati
+  CANCELLED
+}
+
+enum RentalKind {
+  PERSONAL // prenotazione autonoma del socio
+  OUTING   // noleggio dentro un'uscita di club
+}
+
+enum RentalStatus {
+  RESERVED  // prenotato, non ancora ritirato
+  ACTIVE    // materiale consegnato
+  RETURNED  // materiale rientrato
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID // incasso confermato
+}
+
+// ---------------------------------------------------------------------
+// UTENTI
+// ---------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  phone        String?
+  role         Role     @default(MEMBER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  rentals             Rental[]            @relation("RentalMember")
+  outingsLed          Outing[]            @relation("OutingInstructor")
+  participations      OutingParticipant[]
+  paymentsConfirmed   OutingParticipant[] @relation("PaymentConfirmedBy")
+  priceListUpdates    PriceListEntry[]
+  serviceFeeUpdates   ServiceFee[]
+
+  @@index([role])
+}
+
+// ---------------------------------------------------------------------
+// INVENTARIO
+// ---------------------------------------------------------------------
+
+model EquipmentItem {
+  id           String            @id @default(cuid())
+  category     EquipmentCategory
+  brand        String
+  model        String
+  /// Taglia (es. "M", "XL") o volume (es. "250 L") a seconda della categoria
+  size         String?
+  /// Numero di serie univoco: obbligatorio per OGNI pezzo
+  serialNumber String            @unique
+  photoUrl     String?
+  description  String?
+  status       ItemStatus        @default(AVAILABLE)
+  /// Archiviazione logica (dismesso) senza perdere lo storico noleggi
+  isArchived   Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  rentalItems RentalItem[]
+
+  @@index([category, status])
+}
+
+// ---------------------------------------------------------------------
+// LISTINO PREZZI (gestito dall'Amministratore)
+// ---------------------------------------------------------------------
+
+/// Tariffa noleggio per categoria e unità (es. CANOE / DAILY = 15,00 €).
+/// Lo storico è mantenuto con validFrom/validTo: i noleggi salvano
+/// comunque una copia del prezzo applicato (snapshot).
+model PriceListEntry {
+  id          String            @id @default(cuid())
+  category    EquipmentCategory
+  unit        PricingUnit
+  amount      Decimal           @db.Decimal(10, 2)
+  validFrom   DateTime          @default(now())
+  validTo     DateTime?
+  updatedById String?
+  updatedBy   User?             @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([category, unit, validFrom])
+}
+
+/// Tariffe dei servizi furgone (trasporto attrezzatura, quota posto).
+model ServiceFee {
+  id          String      @id @default(cuid())
+  type        ServiceType
+  amount      Decimal     @db.Decimal(10, 2)
+  validFrom   DateTime    @default(now())
+  validTo     DateTime?
+  updatedById String?
+  updatedBy   User?       @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([type, validFrom])
+}
+
+// ---------------------------------------------------------------------
+// NOLEGGI (personali e di uscita)
+// ---------------------------------------------------------------------
+
+/// Un noleggio raggruppa uno o più pezzi per un socio in un intervallo.
+/// - PERSONAL: creato dal socio (prenotazione autonoma)
+/// - OUTING:   creato dall'istruttore nel Passo 1 del wizard
+model Rental {
+  id        String       @id @default(cuid())
+  kind      RentalKind
+  status    RentalStatus @default(RESERVED)
+  memberId  String
+  member    User         @relation("RentalMember", fields: [memberId], references: [id])
+  startAt   DateTime
+  endAt     DateTime
+  /// Unità di tariffazione usata per il calcolo (per OUTING tipicamente PER_OUTING)
+  unit      PricingUnit
+  /// Totale calcolato (somma delle righe), congelato alla conferma
+  total     Decimal      @default(0) @db.Decimal(10, 2)
+  notes     String?
+
+  /// Valorizzato solo per kind = OUTING
+  participantId String?            @unique
+  participant   OutingParticipant? @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  items     RentalItem[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([memberId, startAt])
+  @@index([status])
+}
+
+/// Singolo pezzo all'interno di un noleggio, con prezzo applicato e rientro.
+model RentalItem {
+  id         String        @id @default(cuid())
+  rentalId   String
+  rental     Rental        @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       EquipmentItem @relation(fields: [itemId], references: [id])
+  /// Snapshot della tariffa al momento della prenotazione
+  unitPrice  Decimal       @db.Decimal(10, 2)
+  quantity   Decimal       @default(1) @db.Decimal(6, 2) // ore/giorni/uscite
+  lineTotal  Decimal       @db.Decimal(10, 2)
+  returnedAt DateTime?
+  returnNote String?       // es. danni riscontrati al rientro
+
+  @@unique([rentalId, itemId])
+  @@index([itemId])
+}
+
+// ---------------------------------------------------------------------
+// USCITE DI CLUB
+// ---------------------------------------------------------------------
+
+model Outing {
+  id           String       @id @default(cuid())
+  title        String
+  destination  String?
+  startAt      DateTime
+  endAt        DateTime
+  status       OutingStatus @default(PLANNED)
+  instructorId String
+  instructor   User         @relation("OutingInstructor", fields: [instructorId], references: [id])
+
+  /// Posti disponibili sul furgone (null = nessun furgone)
+  vanSeats     Int?
+  /// Spese vive effettive da ripartire tra chi è a bordo (TravelMode.VAN)
+  fuelCost     Decimal      @default(0) @db.Decimal(10, 2)
+  tollCost     Decimal      @default(0) @db.Decimal(10, 2)
+
+  notes        String?
+  participants OutingParticipant[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([startAt])
+  @@index([instructorId])
+}
+
+/// Riga di partecipazione socio ↔ uscita, prodotta dal wizard.
+/// Il noleggio (opzione 1) è la relazione opzionale `rental`;
+/// trasporto/furgone (opzioni 2/3) è il singolo campo `travelMode`.
+model OutingParticipant {
+  id         String     @id @default(cuid())
+  outingId   String
+  outing     Outing     @relation(fields: [outingId], references: [id], onDelete: Cascade)
+  memberId   String
+  member     User       @relation(fields: [memberId], references: [id])
+  travelMode TravelMode @default(AUTONOMOUS)
+
+  rental     Rental?
+
+  // Dettaglio quota individuale (snapshot ricalcolato fino alla chiusura)
+  rentalAmount    Decimal @default(0) @db.Decimal(10, 2) // (1)
+  transportAmount Decimal @default(0) @db.Decimal(10, 2) // (2)
+  vanSeatAmount   Decimal @default(0) @db.Decimal(10, 2) // (3) quota furgone
+  expensesShare   Decimal @default(0) @db.Decimal(10, 2) // (3) quota spese vive
+  totalAmount     Decimal @default(0) @db.Decimal(10, 2)
+
+  paymentStatus    PaymentStatus @default(PENDING)
+  paidAt           DateTime?
+  paidConfirmedById String?
+  paidConfirmedBy   User?        @relation("PaymentConfirmedBy", fields: [paidConfirmedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([outingId, memberId]) // un socio una sola volta per uscita
+  @@index([memberId])
+}
