@@ -269,7 +269,10 @@ export function OutingDetailPage() {
 
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <div className="text-xs text-muted-foreground">
-                      {p.rental?.charges.map((c) => `${c.name} ${formatEuro(c.dailyPrice)} × ${c.days}`).join(" · ")}
+                      {[
+                        ...(p.rental?.charges.map((c) => `${c.name} ${formatEuro(c.dailyPrice)} × ${c.days}`) ?? []),
+                        ...(Number(p.transportAmount) > 0 ? [`Trasporto attrezzatura ${formatEuro(p.transportAmount)}`] : []),
+                      ].join(" · ")}
                       {paid && p.paidConfirmedBy && (
                         <div>
                           Incasso confermato da {p.paidConfirmedBy.firstName} {p.paidConfirmedBy.lastName}

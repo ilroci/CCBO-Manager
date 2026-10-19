@@ -1,5 +1,5 @@
 /**
- * Crea un utente per ruolo, il listino del club e un inventario di esempio.
+ * Crea un utente per ruolo, il listino del club (noleggi e trasporto) e un inventario di esempio.
  * Idempotente: utenti, voci di listino e pezzi già presenti (stessa email / nome / numero di serie)
  * non vengono modificati.
  *
@@ -7,7 +7,7 @@
  *   SEED_PASSWORD="..." npm run seed   → password scelta (consigliato fuori dal locale)
  *   SEED_DEMO_DATA=false npm run seed  → solo utenti, senza inventario di esempio (produzione)
  */
-import { EquipmentCategory, PrismaClient, Role } from "@prisma/client";
+import { EquipmentCategory, PrismaClient, Role, ServiceType } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -16,6 +16,21 @@ const users = [
   { email: "admin@canoaclub.local", firstName: "Anna", lastName: "Amministratrice", role: Role.ADMIN },
   { email: "istruttore@canoaclub.local", firstName: "Ivo", lastName: "Istruttore", role: Role.INSTRUCTOR },
   { email: "socio@canoaclub.local", firstName: "Sara", lastName: "Socia", role: Role.MEMBER },
+];
+
+/**
+ * Istruttori e soci del club, solo per l'ambiente locale (insieme all'inventario di esempio).
+ * Cognomi da completare dalla pagina Utenti; stessa password degli utenti demo.
+ */
+const clubUsers = [
+  { email: "giacomo@canoaclub.local", firstName: "Giacomo", lastName: "—", role: Role.INSTRUCTOR },
+  { email: "francesco@canoaclub.local", firstName: "Francesco", lastName: "—", role: Role.INSTRUCTOR },
+  { email: "eleonora@canoaclub.local", firstName: "Eleonora", lastName: "—", role: Role.INSTRUCTOR },
+  { email: "salvo@canoaclub.local", firstName: "Salvo", lastName: "—", role: Role.MEMBER },
+  { email: "fra@canoaclub.local", firstName: "Fra", lastName: "—", role: Role.MEMBER },
+  { email: "bula@canoaclub.local", firstName: "Bula", lastName: "—", role: Role.MEMBER },
+  { email: "giovanni@canoaclub.local", firstName: "Giovanni", lastName: "—", role: Role.MEMBER },
+  { email: "andrea.cobi@canoaclub.local", firstName: "Andrea", lastName: "Cobi", role: Role.MEMBER },
 ];
 
 const { CANOE, PADDLE, HELMET, WATER_JACKET, SPRAY_DECK, WETSUIT, LIFE_JACKET } = EquipmentCategory;
@@ -77,7 +92,20 @@ async function main() {
   }
   console.log(`✓ listino: ${rentalOptions.map((o) => o.name).join(", ")}`);
 
+  // Uscite: solo trasporto attrezzatura (opzione B), 5 € per uscita.
+  await prisma.serviceFee.upsert({
+    where: { type: ServiceType.EQUIPMENT_TRANSPORT },
+    update: {},
+    create: { type: ServiceType.EQUIPMENT_TRANSPORT, amount: "5" },
+  });
+  console.log("✓ trasporto attrezzatura nelle uscite: 5 €");
+
   if (process.env.SEED_DEMO_DATA === "false") return;
+
+  for (const user of clubUsers) {
+    await prisma.user.upsert({ where: { email: user.email }, update: {}, create: { ...user, passwordHash } });
+  }
+  console.log(`✓ utenti del club: ${clubUsers.map((u) => u.firstName).join(", ")}`);
 
   for (const item of equipment) {
     await prisma.equipmentItem.upsert({

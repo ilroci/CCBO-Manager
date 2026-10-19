@@ -17,7 +17,8 @@ import { formatPeriod } from "@/lib/dates";
 import { CATEGORY_LABELS } from "@/lib/equipment";
 import { formatEuro } from "@/lib/money";
 import { TRAVEL_MODES, TRAVEL_MODE_LABELS } from "@/lib/outings";
-import type { AvailableItem, Outing, OutingParticipant, RentalQuote, TravelMode, User } from "@/lib/types";
+import { usePriceList } from "@/lib/price-list";
+import type { AvailableItem, Outing, OutingParticipant, ParticipantQuote, TravelMode, User } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** `undefined` = chiuso, `null` = nuovo partecipante, altrimenti modifica. */
@@ -53,7 +54,8 @@ export function ParticipantWizard({
   const [loadingItems, setLoadingItems] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [travelMode, setTravelMode] = useState<TravelMode>();
-  const [quote, setQuote] = useState<RentalQuote>();
+  const [quote, setQuote] = useState<ParticipantQuote>();
+  const { transportFee } = usePriceList();
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
 
@@ -100,12 +102,9 @@ export function ParticipantWizard({
   // Calcolo della quota all'arrivo sul riepilogo (dipende solo dal passo: i dati sono già fissati).
   useEffect(() => {
     if (step !== 3) return;
-    if (itemIds.length === 0) {
-      setQuote({ days: outing.days, total: "0.00", charges: [] });
-      return;
-    }
+    setQuote(undefined);
     api
-      .post<RentalQuote>("/api/rentals/quote", { start: outing.startDate, end: outing.endDate, itemIds })
+      .post<ParticipantQuote>(`/api/outings/${outing.id}/quote`, { itemIds, travelMode })
       .then(({ data }) => setQuote(data))
       .catch((err) => setError(getErrorMessage(err)));
   }, [step]);
@@ -311,6 +310,9 @@ export function ParticipantWizard({
                       {mode.letter}) {mode.label}
                     </span>
                     <span className="block text-sm text-muted-foreground">{mode.description}</span>
+                    {mode.value === "TRANSPORT_ONLY" && transportFee && (
+                      <span className="block text-xs font-medium">{formatEuro(transportFee)} per uscita</span>
+                    )}
                     {mode.value === "VAN" && outing.vanSeats !== null && (
                       <span className="block text-xs text-muted-foreground">
                         Posti liberi: {Math.max(0, outing.vanSeats - aboardOthers)} su {outing.vanSeats}
@@ -321,8 +323,8 @@ export function ParticipantWizard({
               );
             })}
             <p className="text-xs text-muted-foreground">
-              Quota furgone, spese vive e trasporto attrezzatura non sono ancora a listino: per ora la modalità viene
-              registrata senza costi.
+              Quota furgone e spese vive non sono ancora a listino: per ora l'opzione A viene registrata senza
+              costi.
             </p>
           </div>
         )}
@@ -368,13 +370,21 @@ export function ParticipantWizard({
                       <span className="tabular-nums">{formatEuro(charge.amount)}</span>
                     </div>
                   ))}
-                  <div className="flex justify-between gap-2 text-muted-foreground">
-                    <span>Furgone / trasporto</span>
-                    <span className="tabular-nums">{formatEuro(0)}</span>
+                  {quote.charges.length === 0 && (
+                    <div className="flex justify-between gap-2 text-muted-foreground">
+                      <span>Noleggio attrezzatura</span>
+                      <span className="tabular-nums">{formatEuro(0)}</span>
+                    </div>
+                  )}
+                  <div
+                    className={cn("flex justify-between gap-2", Number(quote.transportAmount) === 0 && "text-muted-foreground")}
+                  >
+                    <span>{travelMode === "VAN" ? "Quota furgone e spese vive" : "Trasporto attrezzatura"}</span>
+                    <span className="tabular-nums">{formatEuro(quote.transportAmount)}</span>
                   </div>
                   <div className="mt-1 flex justify-between gap-2 border-t pt-2 text-base font-semibold">
                     <span>Quota individuale</span>
-                    <span className="tabular-nums">{formatEuro(quote.total)}</span>
+                    <span className="tabular-nums">{formatEuro(quote.totalAmount)}</span>
                   </div>
                 </>
               )}

@@ -1,4 +1,4 @@
-import { Prisma, RentalKind, TravelMode, type Outing } from "@prisma/client";
+import { Prisma, RentalKind, ServiceType, TravelMode, type Outing } from "@prisma/client";
 import { calendarDays, formatDate } from "./dates";
 import { itemInclude, toItemDto } from "./equipment";
 import { HttpError } from "./http-error";
@@ -8,36 +8,62 @@ type Db = Prisma.TransactionClient;
 
 const ZERO = new Prisma.Decimal(0);
 
+/** Tariffa del servizio furgone per la modalità di viaggio (oggi solo B → trasporto attrezzatura). */
+export async function transportFee(db: Db, travelMode: TravelMode): Promise<Prisma.Decimal> {
+  if (travelMode !== TravelMode.TRANSPORT_ONLY) return ZERO;
+  const fee = await db.serviceFee.findUnique({ where: { type: ServiceType.EQUIPMENT_TRANSPORT } });
+  return fee?.amount ?? ZERO;
+}
+
+/**
+ * Quota individuale di un partecipante, senza salvare nulla (riepilogo del wizard):
+ * (1) noleggio = voci di listino × giorni dell'uscita;
+ * (2) solo trasporto attrezzatura = tariffa fissa per uscita;
+ * (3) quota furgone + spese vive = 0, rimandate.
+ */
+export async function quoteParticipant(
+  db: Db,
+  outing: Pick<Outing, "startDate" | "endDate">,
+  itemIds: string[],
+  travelMode: TravelMode,
+) {
+  const rental = itemIds.length > 0 ? await quoteRental(db, itemIds, outing.startDate, outing.endDate) : null;
+  const rentalAmount = rental?.total ?? ZERO;
+  const transportAmount = await transportFee(db, travelMode);
+  return {
+    rental,
+    rentalAmount,
+    transportAmount,
+    vanSeatAmount: ZERO,
+    expensesShare: ZERO,
+    totalAmount: rentalAmount.add(transportAmount),
+  };
+}
+
 /**
  * Crea, aggiorna o elimina il noleggio (opzione 1) di un partecipante, con le date
- * dell'uscita, poi ricalcola la sua quota individuale.
- *
- * Quote attuali: solo noleggio. Trasporto attrezzatura (2) e quota furgone + spese vive (3)
- * sono a 0 finché il listino furgone non verrà definito; la modalità di viaggio è comunque
- * registrata nel partecipante.
+ * dell'uscita, poi ricalcola e salva la sua quota individuale (copia degli importi applicati).
  */
 export async function syncParticipant(
   tx: Db,
   outing: Pick<Outing, "startDate" | "endDate">,
-  participant: { id: string; memberId: string; rentalId: string | null },
+  participant: { id: string; memberId: string; rentalId: string | null; travelMode: TravelMode },
   itemIds: string[],
 ) {
-  let rentalAmount = ZERO;
+  if (itemIds.length > 0) {
+    await lockAndAssertAvailable(tx, itemIds, outing.startDate, outing.endDate, participant.rentalId ?? undefined);
+  }
+  const { rental, ...amounts } = await quoteParticipant(tx, outing, itemIds, participant.travelMode);
 
-  if (itemIds.length === 0) {
+  if (!rental) {
     if (participant.rentalId) await tx.rental.delete({ where: { id: participant.rentalId } });
   } else {
-    const { startDate, endDate } = outing;
-    await lockAndAssertAvailable(tx, itemIds, startDate, endDate, participant.rentalId ?? undefined);
-    const quote = await quoteRental(tx, itemIds, startDate, endDate);
-    rentalAmount = quote.total;
-
     const data = {
-      startDate,
-      endDate,
-      total: quote.total,
+      startDate: outing.startDate,
+      endDate: outing.endDate,
+      total: rental.total,
       items: { create: itemIds.map((itemId) => ({ itemId })) },
-      charges: { create: quote.charges },
+      charges: { create: rental.charges },
     };
     if (participant.rentalId) {
       // Prima si svuotano pezzi e voci, poi si ricreano: ordine esplicito, non affidato ai nested write.
@@ -51,16 +77,7 @@ export async function syncParticipant(
     }
   }
 
-  await tx.outingParticipant.update({
-    where: { id: participant.id },
-    data: {
-      rentalAmount,
-      transportAmount: ZERO,
-      vanSeatAmount: ZERO,
-      expensesShare: ZERO,
-      totalAmount: rentalAmount,
-    },
-  });
+  await tx.outingParticipant.update({ where: { id: participant.id }, data: amounts });
 }
 
 /** Se l'uscita ha un numero di posti sul furgone, i partecipanti a bordo non possono superarlo. */

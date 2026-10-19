@@ -32,8 +32,9 @@ docker compose up --build
 | API | http://localhost:3000 · `GET /health` |
 | PostgreSQL | `localhost:5432` · utente/password/db `canoa` |
 
-All'avvio il backend applica le migrazioni ed esegue il seed, che crea 21 pezzi di
-attrezzatura di esempio e un utente per ruolo (password `canoa1234`):
+All'avvio il backend applica le migrazioni ed esegue il seed: listino, 24 pezzi di
+attrezzatura di esempio, un utente demo per ruolo e gli istruttori/soci del club (elenco
+completo in `AVVIO_LOCALE.md`), tutti con password `canoa1234`:
 
 | Email | Ruolo |
 |---|---|
@@ -131,6 +132,7 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `DELETE` | `/api/equipment/:id` | Admin, solo pezzi senza storico noleggi |
 | `GET` | `/api/price-list` | autenticato |
 | `POST` · `PATCH /:id` · `DELETE /:id` | `/api/price-list` | Admin |
+| `PUT` | `/api/price-list/service-fees/:type` | Admin (tariffa trasporto) |
 | `GET` | `/api/rentals/availability?start=&end=` | autenticato |
 | `POST` | `/api/rentals/quote` | autenticato (anteprima costo) |
 | `POST` | `/api/rentals` | autenticato (prenota per sé) |
@@ -141,6 +143,7 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `GET` · `POST` | `/api/outings?when=upcoming\|past\|all` | Admin, Istruttore |
 | `GET` · `PATCH` · `DELETE` | `/api/outings/:id` | Admin, Istruttore |
 | `POST` | `/api/outings/:id/start` · `/complete` · `/cancel` | Admin, Istruttore |
+| `POST` | `/api/outings/:id/quote` | Admin, Istruttore (riepilogo quota del wizard) |
 | `POST` | `/api/outings/:id/participants` | Admin, Istruttore (wizard) |
 | `PATCH` · `DELETE` | `/api/outings/:id/participants/:pid` | Admin, Istruttore |
 | `POST` | `/api/outings/:id/participants/:pid/return` · `/payment` | Admin, Istruttore |
@@ -199,8 +202,8 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   di cui contiene almeno un pezzo, moltiplicata per i giorni. Una categoria sta in una sola
   voce, per non addebitare due volte lo stesso pezzo. Le voci addebitate vengono copiate in
   `RentalCharge` (nome, prezzo, giorni), così modificare il listino non altera lo storico.
-- **Servizi furgone** (`ServiceFee`, trasporto e quota posto): modello presente ma non ancora
-  gestito, rimandato (vedi Quota individuale).
+- **Servizi furgone** (`ServiceFee`, una tariffa per tipo): in uso il trasporto attrezzatura;
+  la quota posto sul furgone è rimandata.
 - **Uscite**: Pianificata → In corso ("Partenza": tutto il materiale risulta consegnato) →
   Conclusa (rientro per singolo socio o di tutti alla chiusura); una pianificata si può
   annullare. I partecipanti si aggiungono col wizard: socio → noleggio (facoltativo, pezzi
@@ -211,10 +214,11 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   furgone, i partecipanti "A bordo" non possono superarli. Un incasso confermato blocca le
   modifiche alla quota finché non viene annullato. Qualunque istruttore può gestire
   qualunque uscita.
-- **Quota individuale**: oggi è solo il noleggio. Trasporto attrezzatura (B), quota furgone e
-  spese vive (A) sono registrati come modalità ma valgono 0 €: i campi esistono già
-  (`transportAmount`, `vanSeatAmount`, `expensesShare`, `Outing.fuelCost/tollCost`) e verranno
-  valorizzati quando sarà definito il listino furgone.
+- **Quota individuale** = noleggio (voci × giorni dell'uscita) + **solo trasporto attrezzatura**
+  (opzione B, `ServiceFee` EQUIPMENT_TRANSPORT, 5 € fissi per uscita, modificabile dall'admin
+  nel Listino). Quota furgone e spese vive (opzione A) sono registrate ma valgono 0 €: i campi
+  esistono già (`vanSeatAmount`, `expensesShare`, `Outing.fuelCost/tollCost`). Ogni partecipante
+  conserva gli importi applicati; cambiano solo se lo si modifica.
 - **Prenotazioni**: date di calendario inclusive (`@db.Date`): dal sabato alla domenica = 2
   giorni; prenotabili da oggi (ora italiana), per al massimo 30 giorni. Ciclo di vita:
   Prenotato → Ritirato (pezzi "In noleggio") → Rientrato (pezzi "Disponibile"), oppure

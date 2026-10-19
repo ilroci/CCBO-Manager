@@ -11,7 +11,7 @@ import { Router, type Response } from "express";
 import { z } from "zod";
 import { calendarDays, dateSchema, formatDate, parseDate, todayInItaly } from "../lib/dates";
 import { badRequest, HttpError, notFound } from "../lib/http-error";
-import { assertVanSeats, outingInclude, syncParticipant, toOutingDto } from "../lib/outings";
+import { assertVanSeats, outingInclude, quoteParticipant, syncParticipant, toOutingDto } from "../lib/outings";
 import { prisma } from "../lib/prisma";
 import { MAX_RENTAL_DAYS } from "../lib/rentals";
 import { authenticate, authorize } from "../middleware/auth";
@@ -152,7 +152,7 @@ outingsRouter.patch("/:id", async (req, res) => {
         await syncParticipant(
           tx,
           updated,
-          { id: p.id, memberId: p.memberId, rentalId: p.rental.id },
+          { id: p.id, memberId: p.memberId, rentalId: p.rental.id, travelMode: p.travelMode },
           p.rental.items.map((row) => row.itemId),
         );
       }
@@ -261,6 +261,29 @@ const participantSchema = z.object({
   travelMode: z.enum(TravelMode),
 });
 
+const quoteSchema = participantSchema.omit({ memberId: true });
+
+/** POST /api/outings/:id/quote — riepilogo del wizard: quota individuale senza salvare. */
+outingsRouter.post("/:id/quote", async (req, res) => {
+  const { id } = idParams.parse(req.params);
+  const { itemIds, travelMode } = quoteSchema.parse(req.body);
+  const outing = await loadOuting(id);
+  const quote = await quoteParticipant(prisma, outing, itemIds, travelMode);
+  res.json({
+    days: calendarDays(outing.startDate, outing.endDate),
+    charges: (quote.rental?.charges ?? []).map((c) => ({
+      ...c,
+      dailyPrice: c.dailyPrice.toFixed(2),
+      amount: c.amount.toFixed(2),
+    })),
+    rentalAmount: quote.rentalAmount.toFixed(2),
+    transportAmount: quote.transportAmount.toFixed(2),
+    vanSeatAmount: quote.vanSeatAmount.toFixed(2),
+    expensesShare: quote.expensesShare.toFixed(2),
+    totalAmount: quote.totalAmount.toFixed(2),
+  });
+});
+
 /** POST /api/outings/:id/participants — aggiunge un socio con noleggio e modalità di viaggio. */
 outingsRouter.post("/:id/participants", async (req, res) => {
   const { id } = idParams.parse(req.params);
@@ -277,12 +300,24 @@ outingsRouter.post("/:id/participants", async (req, res) => {
   await prisma.$transaction(async (tx) => {
     const participant = await tx.outingParticipant.create({ data: { outingId: id, memberId, travelMode } });
     await assertVanSeats(tx, id, outing.vanSeats);
-    await syncParticipant(tx, outing, { id: participant.id, memberId, rentalId: null }, itemIds);
+    await syncParticipant(tx, outing, { id: participant.id, memberId, rentalId: null, travelMode }, itemIds);
   });
   await respond(res, id, 201);
 });
 
-const updateParticipantSchema = participantSchema.omit({ memberId: true }).partial();
+/**
+ * Modifica: ogni campo è facoltativo e un campo assente resta invariato. `itemIds` viene
+ * ridefinito senza il default `[]` di participantSchema: con il default, un PATCH che cambia
+ * solo la modalità di viaggio cancellerebbe il noleggio.
+ */
+const updateParticipantSchema = z.object({
+  itemIds: z
+    .array(z.string().min(1))
+    .max(20)
+    .transform((ids) => [...new Set(ids)])
+    .optional(),
+  travelMode: z.enum(TravelMode).optional(),
+});
 
 /** Il socio ha già pagato: la quota non può cambiare finché l'incasso non viene annullato. */
 function assertNotPaid(p: { paymentStatus: PaymentStatus }) {
@@ -310,14 +345,18 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
       await tx.outingParticipant.update({ where: { id: pid }, data: { travelMode } });
       await assertVanSeats(tx, id, outing.vanSeats);
     }
-    if (itemIds) {
-      await syncParticipant(
-        tx,
-        outing,
-        { id: pid, memberId: participant.memberId, rentalId: participant.rental?.id ?? null },
-        itemIds,
-      );
-    }
+    // La quota dipende sia dai pezzi sia dalla modalità di viaggio: si ricalcola sempre.
+    await syncParticipant(
+      tx,
+      outing,
+      {
+        id: pid,
+        memberId: participant.memberId,
+        rentalId: participant.rental?.id ?? null,
+        travelMode: travelMode ?? participant.travelMode,
+      },
+      itemIds ?? participant.rental?.items.map((row) => row.itemId) ?? [],
+    );
   });
   await respond(res, id);
 });

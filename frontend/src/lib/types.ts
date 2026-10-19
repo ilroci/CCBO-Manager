@@ -131,3 +131,21 @@ export interface Outing {
   participants: OutingParticipant[];
   totals: { participants: number; aboardVan: number; total: string; collected: string };
 }
+
+/** Tariffa fissa per uscita di un servizio furgone (oggi: solo trasporto attrezzatura). */
+export interface ServiceFee {
+  type: "EQUIPMENT_TRANSPORT" | "VAN_SEAT";
+  amount: string;
+  updatedAt: string;
+}
+
+/** Riepilogo della quota di un partecipante calcolato dal backend. */
+export interface ParticipantQuote {
+  days: number;
+  charges: RentalCharge[];
+  rentalAmount: string;
+  transportAmount: string;
+  vanSeatAmount: string;
+  expensesShare: string;
+  totalAmount: string;
+}

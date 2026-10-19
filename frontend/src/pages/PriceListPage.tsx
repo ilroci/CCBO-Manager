@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CircleAlert, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FormError } from "@/components/FormError";
+import { TransportFeeCard } from "@/components/TransportFeeCard";
 import {
   RentalOptionFormDialog,
   type RentalOptionEditing,
@@ -16,7 +17,7 @@ import { fullKitPrice, usePriceList } from "@/lib/price-list";
 import type { RentalOption } from "@/lib/types";
 
 export function PriceListPage() {
-  const { options, loading, error, reload } = usePriceList();
+  const { options, transportFee, loading, error, reload } = usePriceList();
   const [editing, setEditing] = useState<RentalOptionEditing>(undefined);
   const [deleting, setDeleting] = useState<RentalOption>();
 
@@ -97,6 +98,11 @@ export function PriceListPage() {
               </span>
             </div>
           )}
+
+          <h2 className="mt-2 text-lg font-semibold">Servizi delle uscite</h2>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <TransportFeeCard amount={transportFee} onSaved={() => void reload()} />
+          </div>
 
           <p className="text-sm text-muted-foreground">
             Come si calcola: un noleggio paga ogni voce di cui comprende almeno un pezzo, moltiplicata

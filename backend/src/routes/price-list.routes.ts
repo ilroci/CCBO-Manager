@@ -1,4 +1,4 @@
-import { EquipmentCategory, Role, type RentalOption } from "@prisma/client";
+import { EquipmentCategory, Role, ServiceType, type RentalOption, type ServiceFee } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { HttpError } from "../lib/http-error";
@@ -16,10 +16,17 @@ function toDto(option: RentalOption) {
   return { ...option, dailyPrice: option.dailyPrice.toFixed(2) };
 }
 
-/** GET /api/price-list — visibile a tutti i ruoli (catalogo, prenotazioni, uscite). */
+function toFeeDto(fee: ServiceFee) {
+  return { type: fee.type, amount: fee.amount.toFixed(2), updatedAt: fee.updatedAt };
+}
+
+/** GET /api/price-list — voci di noleggio e tariffe dei servizi delle uscite, visibili a tutti. */
 priceListRouter.get("/", async (_req, res) => {
-  const options = await prisma.rentalOption.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
-  res.json({ options: options.map(toDto) });
+  const [options, serviceFees] = await Promise.all([
+    prisma.rentalOption.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.serviceFee.findMany({ orderBy: { type: "asc" } }),
+  ]);
+  res.json({ options: options.map(toDto), serviceFees: serviceFees.map(toFeeDto) });
 });
 
 /** Accetta 15, "15", "12,50", "12.5". */
@@ -60,6 +67,21 @@ async function assertCategoriesFree(categories: EquipmentCategory[], excludeId?:
 }
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
+
+/**
+ * PUT /api/price-list/service-fees/:type — tariffa fissa per uscita di un servizio furgone.
+ * Le quote già calcolate dei partecipanti non cambiano (ne conservano una copia).
+ */
+priceListRouter.put("/service-fees/:type", authorize(Role.ADMIN), async (req, res) => {
+  const { type } = z.object({ type: z.enum(ServiceType) }).parse(req.params);
+  const { amount } = z.object({ amount: priceSchema }).parse(req.body);
+  const fee = await prisma.serviceFee.upsert({
+    where: { type },
+    create: { type, amount, updatedById: req.user!.id },
+    update: { amount, updatedById: req.user!.id },
+  });
+  res.json({ serviceFee: toFeeDto(fee) });
+});
 
 priceListRouter.post("/", authorize(Role.ADMIN), async (req, res) => {
   const data = optionSchema.parse(req.body);
