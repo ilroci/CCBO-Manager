@@ -90,7 +90,7 @@ export interface Rental {
   createdAt: string;
 }
 
-export type OutingStatus = "PLANNED" | "ONGOING" | "COMPLETED" | "CANCELLED";
+export type OutingStatus = "ACTIVE" | "CANCELLED";
 export type TravelMode = "VAN" | "TRANSPORT_ONLY" | "AUTONOMOUS";
 export type PaymentStatus = "PENDING" | "PAID";
 
@@ -129,7 +129,7 @@ export interface Outing {
   vanSeats: number | null;
   notes: string | null;
   participants: OutingParticipant[];
-  totals: { participants: number; aboardVan: number; total: string; collected: string };
+  totals: { participants: number; aboardVan: number; toReturn: number; total: string; collected: string };
 }
 
 /** Tariffa fissa per uscita di un servizio furgone (oggi: solo trasporto attrezzatura). */

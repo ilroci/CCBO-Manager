@@ -56,10 +56,10 @@ enum TravelMode {
   AUTONOMOUS     // C) Autonomo → nessun costo furgone
 }
 
+/// Un'uscita resta sempre modificabile finché non viene annullata.
+/// Programmata / in corso / conclusa si ricava dalle date, non è uno stato salvato.
 enum OutingStatus {
-  PLANNED   // creata, iscrizioni aperte
-  ONGOING   // materiale consegnato, uscita in corso
-  COMPLETED // materiale rientrato, costi consolidati
+  ACTIVE
   CANCELLED
 }
 
@@ -263,7 +263,7 @@ model Outing {
   startDate    DateTime     @db.Date
   /// Ultimo giorno dell'uscita (incluso)
   endDate      DateTime     @db.Date
-  status       OutingStatus @default(PLANNED)
+  status       OutingStatus @default(ACTIVE)
   instructorId String
   instructor   User         @relation("OutingInstructor", fields: [instructorId], references: [id])
 

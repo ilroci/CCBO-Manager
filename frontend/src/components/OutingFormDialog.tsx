@@ -35,8 +35,6 @@ export function OutingFormDialog({
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
   const isNew = editing === null;
-  // Le date si cambiano solo finché l'uscita è pianificata.
-  const datesLocked = editing ? editing.status !== "PLANNED" : false;
   const defaultStart = addDays(todayIso(), 7);
 
   useEffect(() => {
@@ -63,7 +61,8 @@ export function OutingFormDialog({
       instructorId: text("instructorId") || undefined,
       vanSeats: seats ? Number(seats) : null,
       notes: text("notes"),
-      ...(datesLocked ? {} : { start: text("start"), end: text("end") }),
+      start: text("start"),
+      end: text("end"),
     };
 
     setSaving(true);
@@ -103,11 +102,11 @@ export function OutingFormDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="start">Dal giorno</Label>
-              <Input id="start" name="start" type="date" required disabled={datesLocked} defaultValue={editing?.startDate ?? defaultStart} />
+              <Input id="start" name="start" type="date" required defaultValue={editing?.startDate ?? defaultStart} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="end">Al giorno (incluso)</Label>
-              <Input id="end" name="end" type="date" required disabled={datesLocked} defaultValue={editing?.endDate ?? defaultStart} />
+              <Input id="end" name="end" type="date" required defaultValue={editing?.endDate ?? defaultStart} />
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">

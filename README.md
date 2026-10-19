@@ -104,7 +104,7 @@ npm run dev
 | Area | Admin | Istruttore | Socio |
 |---|:-:|:-:|:-:|
 | Dashboard, catalogo, i miei noleggi | ✓ | ✓ | ✓ |
-| Uscite di club (wizard partecipanti, partenza, rientri, incassi) | ✓ | ✓ | |
+| Uscite di club (wizard partecipanti, rientri, incassi) | ✓ | ✓ | |
 | Elenco iscritti (`GET /api/users`, serve al wizard uscite) | ✓ | ✓ | |
 | Gestione utenti (crea, modifica, ruolo, disattiva) | ✓ | | |
 | Listino prezzi | ✓ | | |
@@ -142,11 +142,11 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `POST` | `/api/rentals/:id/pickup` · `/return` | Admin, Istruttore (solo noleggi personali) |
 | `GET` · `POST` | `/api/outings?when=upcoming\|past\|all` | Admin, Istruttore |
 | `GET` · `PATCH` · `DELETE` | `/api/outings/:id` | Admin, Istruttore |
-| `POST` | `/api/outings/:id/start` · `/complete` · `/cancel` | Admin, Istruttore |
+| `POST` | `/api/outings/:id/cancel` · `/return-all` | Admin, Istruttore |
 | `POST` | `/api/outings/:id/quote` | Admin, Istruttore (riepilogo quota del wizard) |
 | `POST` | `/api/outings/:id/participants` | Admin, Istruttore (wizard) |
 | `PATCH` · `DELETE` | `/api/outings/:id/participants/:pid` | Admin, Istruttore |
-| `POST` | `/api/outings/:id/participants/:pid/return` · `/payment` | Admin, Istruttore |
+| `POST` | `/api/outings/:id/participants/:pid/return` · `/payment` | Admin, Istruttore (annullabili) |
 
 Errori: `{ error, details? }` con 400 (validazione), 401, 403, 404, 409 (email o numero di
 serie già in uso, eliminazione di un pezzo con storico).
@@ -204,16 +204,17 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   `RentalCharge` (nome, prezzo, giorni), così modificare il listino non altera lo storico.
 - **Servizi furgone** (`ServiceFee`, una tariffa per tipo): quota furgone e trasporto
   attrezzatura, 5 € ciascuno per uscita.
-- **Uscite**: Pianificata → In corso ("Partenza": tutto il materiale risulta consegnato) →
-  Conclusa (rientro per singolo socio o di tutti alla chiusura); una pianificata si può
-  annullare. I partecipanti si aggiungono col wizard: socio → noleggio (facoltativo, pezzi
-  liberi nelle date dell'uscita) → modalità di viaggio A/B/C → riepilogo con la quota.
-  Il noleggio del partecipante è un `Rental` di tipo `OUTING` con le date dell'uscita: blocca
-  i pezzi come una prenotazione e compare in "I miei noleggi" del socio. Cambiare le date di
-  un'uscita pianificata sposta i noleggi e ricalcola le quote. Se l'uscita indica i posti sul
-  furgone, i partecipanti "A bordo" non possono superarli. Un incasso confermato blocca le
-  modifiche alla quota finché non viene annullato. Qualunque istruttore può gestire
-  qualunque uscita.
+- **Uscite**: si salvano e restano sempre modificabili (dati, date, partecipanti, attrezzatura,
+  trasporto) finché non vengono annullate. Programmata / In corso / Conclusa si ricava dalle
+  date; l'unico stato salvato è attiva/annullata. I partecipanti si aggiungono col wizard:
+  socio → noleggio (facoltativo, pezzi liberi nelle date dell'uscita) → modalità di viaggio
+  A/B/C → riepilogo con la quota. Il noleggio del partecipante è un `Rental` di tipo `OUTING`
+  con le date dell'uscita: blocca i pezzi come una prenotazione e compare in "I miei noleggi"
+  del socio. Il rientro del materiale è una spunta (per socio o "tutto rientrato"), annullabile;
+  se si cambiano i pezzi di un socio, il suo materiale torna "da far rientrare". Cambiare le
+  date sposta i noleggi e ricalcola le quote. Se l'uscita indica i posti sul furgone, i
+  partecipanti "A bordo" non possono superarli. Un incasso confermato blocca le modifiche a
+  quel socio finché non viene annullato. Qualunque istruttore può gestire qualunque uscita.
 - **Quota individuale** = noleggio (voci × giorni dell'uscita) + servizio furgone, a tariffa
   fissa per uscita modificabile dall'admin nel Listino (`ServiceFee`):
   A) a bordo → **quota furgone 5 €** (VAN_SEAT); B) solo trasporto attrezzatura → **5 €**

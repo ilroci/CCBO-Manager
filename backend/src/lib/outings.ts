@@ -1,4 +1,4 @@
-import { Prisma, RentalKind, ServiceType, TravelMode, type Outing } from "@prisma/client";
+import { Prisma, RentalKind, RentalStatus, ServiceType, TravelMode, type Outing } from "@prisma/client";
 import { calendarDays, formatDate } from "./dates";
 import { itemInclude, toItemDto } from "./equipment";
 import { HttpError } from "./http-error";
@@ -66,24 +66,44 @@ export async function syncParticipant(
 
   if (!rental) {
     if (participant.rentalId) await tx.rental.delete({ where: { id: participant.rentalId } });
+  } else if (!participant.rentalId) {
+    await tx.rental.create({
+      data: {
+        kind: RentalKind.OUTING,
+        memberId: participant.memberId,
+        participantId: participant.id,
+        startDate: outing.startDate,
+        endDate: outing.endDate,
+        total: rental.total,
+        items: { create: itemIds.map((itemId) => ({ itemId })) },
+        charges: { create: rental.charges },
+      },
+    });
   } else {
-    const data = {
-      startDate: outing.startDate,
-      endDate: outing.endDate,
-      total: rental.total,
-      items: { create: itemIds.map((itemId) => ({ itemId })) },
-      charges: { create: rental.charges },
-    };
-    if (participant.rentalId) {
-      // Prima si svuotano pezzi e voci, poi si ricreano: ordine esplicito, non affidato ai nested write.
-      await tx.rentalItem.deleteMany({ where: { rentalId: participant.rentalId } });
-      await tx.rentalCharge.deleteMany({ where: { rentalId: participant.rentalId } });
-      await tx.rental.update({ where: { id: participant.rentalId }, data });
-    } else {
-      await tx.rental.create({
-        data: { ...data, kind: RentalKind.OUTING, memberId: participant.memberId, participantId: participant.id },
-      });
+    const rentalId = participant.rentalId;
+    // Voci e totale si ricalcolano sempre (date o pezzi possono essere cambiati).
+    await tx.rentalCharge.deleteMany({ where: { rentalId } });
+
+    const current = await tx.rentalItem.findMany({ where: { rentalId }, select: { itemId: true } });
+    const sameItems =
+      current.length === itemIds.length && current.every((row) => itemIds.includes(row.itemId));
+
+    if (!sameItems) {
+      // Pezzi diversi: si ricreano e il materiale torna "da far rientrare".
+      await tx.rentalItem.deleteMany({ where: { rentalId } });
     }
+    await tx.rental.update({
+      where: { id: rentalId },
+      data: {
+        startDate: outing.startDate,
+        endDate: outing.endDate,
+        total: rental.total,
+        charges: { create: rental.charges },
+        ...(sameItems
+          ? {}
+          : { status: RentalStatus.RESERVED, items: { create: itemIds.map((itemId) => ({ itemId })) } }),
+      },
+    });
   }
 
   await tx.outingParticipant.update({ where: { id: participant.id }, data: amounts });
@@ -165,6 +185,8 @@ export function toOutingDto(outing: OutingWithRelations) {
     totals: {
       participants: participants.length,
       aboardVan: participants.filter((p) => p.travelMode === TravelMode.VAN).length,
+      /** Soci con attrezzatura del club non ancora segnata come rientrata. */
+      toReturn: participants.filter((p) => p.rental?.status === RentalStatus.RESERVED).length,
       total: money(total),
       collected: money(collected),
     },

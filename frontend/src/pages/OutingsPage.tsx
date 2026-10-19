@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatPeriod } from "@/lib/dates";
 import { formatEuro } from "@/lib/money";
-import { OUTING_STATUS_CLASSES, OUTING_STATUS_LABELS } from "@/lib/outings";
+import { OUTING_PHASE_CLASSES, OUTING_PHASE_LABELS, outingPhase } from "@/lib/outings";
 import type { Outing } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -98,8 +98,8 @@ export function OutingsPage() {
                       <div className="truncate text-lg font-semibold">{outing.title}</div>
                       <div className="text-sm text-muted-foreground">{formatPeriod(outing.startDate, outing.endDate)}</div>
                     </div>
-                    <Badge className={cn("border-transparent", OUTING_STATUS_CLASSES[outing.status])}>
-                      {OUTING_STATUS_LABELS[outing.status]}
+                    <Badge className={cn("border-transparent", OUTING_PHASE_CLASSES[outingPhase(outing)])}>
+                      {OUTING_PHASE_LABELS[outingPhase(outing)]}
                     </Badge>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
@@ -121,6 +121,9 @@ export function OutingsPage() {
                       Resp. {outing.instructor.firstName} {outing.instructor.lastName}
                     </span>
                     <span>
+                      {outing.totals.toReturn > 0 && outingPhase(outing) === "PAST" && (
+                        <span className="mr-2 text-amber-700 dark:text-amber-400">Materiale da far rientrare ·</span>
+                      )}
                       <span className="font-semibold tabular-nums">{formatEuro(outing.totals.collected)}</span>
                       <span className="text-muted-foreground"> incassati su {formatEuro(outing.totals.total)}</span>
                     </span>

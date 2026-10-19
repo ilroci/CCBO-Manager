@@ -1,12 +1,4 @@
-import {
-  ItemStatus,
-  OutingStatus,
-  PaymentStatus,
-  RentalStatus,
-  Role,
-  TravelMode,
-  type Prisma,
-} from "@prisma/client";
+import { OutingStatus, PaymentStatus, RentalStatus, Role, TravelMode, type Prisma } from "@prisma/client";
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { calendarDays, dateSchema, formatDate, parseDate, todayInItaly } from "../lib/dates";
@@ -19,6 +11,10 @@ import { authenticate, authorize } from "../middleware/auth";
 /**
  * Uscite di club. Le gestiscono amministratore e istruttori: qualunque istruttore può
  * operare su qualunque uscita, così un collega può subentrare.
+ *
+ * Un'uscita resta sempre modificabile (dati, date, partecipanti) finché non viene annullata.
+ * L'unico blocco riguarda i soci con incasso confermato: la loro quota non cambia finché
+ * l'incasso non viene annullato.
  */
 export const outingsRouter = Router();
 
@@ -26,12 +22,7 @@ const STAFF: Role[] = [Role.ADMIN, Role.INSTRUCTOR];
 
 outingsRouter.use(authenticate, authorize(...STAFF));
 
-const STATUS_LABELS: Record<OutingStatus, string> = {
-  PLANNED: "pianificata",
-  ONGOING: "in corso",
-  COMPLETED: "conclusa",
-  CANCELLED: "annullata",
-};
+type LoadedOuting = Awaited<ReturnType<typeof loadOuting>>;
 
 async function loadOuting(id: string) {
   const outing = await prisma.outing.findUnique({ where: { id }, include: outingInclude });
@@ -43,10 +34,8 @@ async function respond(res: Response, id: string, status = 200) {
   res.status(status).json({ outing: toOutingDto(await loadOuting(id)) });
 }
 
-function assertStatus(current: OutingStatus, allowed: OutingStatus[], action: string) {
-  if (!allowed.includes(current)) {
-    throw new HttpError(409, `Non puoi ${action}: l'uscita è ${STATUS_LABELS[current]}`);
-  }
+function assertActive(outing: LoadedOuting) {
+  if (outing.status === OutingStatus.CANCELLED) throw new HttpError(409, "L'uscita è annullata");
 }
 
 const optionalText = z
@@ -118,14 +107,14 @@ outingsRouter.get("/:id", async (req, res) => {
 });
 
 /**
- * PATCH /api/outings/:id — dati dell'uscita. Cambiare le date (solo se pianificata) sposta
- * i noleggi dei partecipanti: disponibilità e quote vengono ricalcolate.
+ * PATCH /api/outings/:id — dati dell'uscita. Cambiare le date sposta i noleggi dei
+ * partecipanti: disponibilità e quote vengono ricalcolate.
  */
 outingsRouter.patch("/:id", async (req, res) => {
   const { id } = idParams.parse(req.params);
   const { start, end, instructorId, ...data } = outingSchema.partial().parse(req.body);
   const outing = await loadOuting(id);
-  assertStatus(outing.status, [OutingStatus.PLANNED, OutingStatus.ONGOING], "modificarla");
+  assertActive(outing);
   if (instructorId) await assertInstructor(instructorId);
 
   const newStart = start ?? formatDate(outing.startDate);
@@ -133,10 +122,9 @@ outingsRouter.patch("/:id", async (req, res) => {
   const datesChanged = newStart !== formatDate(outing.startDate) || newEnd !== formatDate(outing.endDate);
 
   if (datesChanged) {
-    assertStatus(outing.status, [OutingStatus.PLANNED], "cambiarne le date");
     assertPeriod(newStart, newEnd);
-    if (outing.participants.some((p) => p.paymentStatus === PaymentStatus.PAID)) {
-      throw new HttpError(409, "Ci sono incassi confermati: annullali prima di cambiare le date");
+    if (outing.participants.some((p) => p.paymentStatus === PaymentStatus.PAID && p.rental)) {
+      throw new HttpError(409, "Ci sono soci con noleggio e incasso confermato: annulla l'incasso prima di cambiare le date");
     }
   }
 
@@ -172,66 +160,14 @@ outingsRouter.delete("/:id", async (req, res) => {
   res.status(204).end();
 });
 
-/** POST /api/outings/:id/start — partenza: consegna di tutto il materiale noleggiato. */
-outingsRouter.post("/:id/start", async (req, res) => {
-  const { id } = idParams.parse(req.params);
-  const outing = await loadOuting(id);
-  assertStatus(outing.status, [OutingStatus.PLANNED], "farla partire");
-
-  const rentalIds = outing.participants.flatMap((p) => (p.rental ? [p.rental.id] : []));
-  const itemIds = outing.participants.flatMap((p) => p.rental?.items.map((row) => row.itemId) ?? []);
-
-  await prisma.$transaction(async (tx) => {
-    const stillOut = await tx.equipmentItem.findMany({
-      where: { id: { in: itemIds }, status: ItemStatus.RENTED },
-      select: { serialNumber: true },
-    });
-    if (stillOut.length > 0) {
-      throw new HttpError(
-        409,
-        `Pezzi non ancora rientrati da un altro noleggio: ${stillOut.map((i) => i.serialNumber).join(", ")}`,
-      );
-    }
-    await tx.equipmentItem.updateMany({ where: { id: { in: itemIds } }, data: { status: ItemStatus.RENTED } });
-    await tx.rental.updateMany({ where: { id: { in: rentalIds } }, data: { status: RentalStatus.ACTIVE } });
-    await tx.outing.update({ where: { id }, data: { status: OutingStatus.ONGOING } });
-  });
-  await respond(res, id);
-});
-
-/** Registra il rientro dei noleggi indicati (ancora attivi): pezzi di nuovo disponibili. */
-async function returnRentals(tx: Prisma.TransactionClient, rentalIds: string[]) {
-  const rows = await tx.rentalItem.findMany({
-    where: { rentalId: { in: rentalIds }, rental: { status: RentalStatus.ACTIVE } },
-    select: { itemId: true, rentalId: true },
-  });
-  const active = [...new Set(rows.map((row) => row.rentalId))];
-  await tx.equipmentItem.updateMany({
-    where: { id: { in: rows.map((row) => row.itemId) } },
-    data: { status: ItemStatus.AVAILABLE },
-  });
-  await tx.rentalItem.updateMany({ where: { rentalId: { in: active } }, data: { returnedAt: new Date() } });
-  await tx.rental.updateMany({ where: { id: { in: active } }, data: { status: RentalStatus.RETURNED } });
-}
-
-/** POST /api/outings/:id/complete — chiusura: rientro di tutto il materiale ancora fuori. */
-outingsRouter.post("/:id/complete", async (req, res) => {
-  const { id } = idParams.parse(req.params);
-  const outing = await loadOuting(id);
-  assertStatus(outing.status, [OutingStatus.ONGOING], "chiuderla");
-
-  await prisma.$transaction(async (tx) => {
-    await returnRentals(tx, outing.participants.flatMap((p) => (p.rental ? [p.rental.id] : [])));
-    await tx.outing.update({ where: { id }, data: { status: OutingStatus.COMPLETED } });
-  });
-  await respond(res, id);
-});
-
-/** POST /api/outings/:id/cancel — annulla un'uscita pianificata e libera l'attrezzatura. */
+/** POST /api/outings/:id/cancel — annulla l'uscita e libera l'attrezzatura. */
 outingsRouter.post("/:id/cancel", async (req, res) => {
   const { id } = idParams.parse(req.params);
   const outing = await loadOuting(id);
-  assertStatus(outing.status, [OutingStatus.PLANNED], "annullarla");
+  assertActive(outing);
+  if (outing.participants.some((p) => p.paymentStatus === PaymentStatus.PAID)) {
+    throw new HttpError(409, "Ci sono incassi confermati: annullali prima di annullare l'uscita");
+  }
 
   await prisma.$transaction([
     prisma.rental.updateMany({
@@ -240,6 +176,31 @@ outingsRouter.post("/:id/cancel", async (req, res) => {
     }),
     prisma.outing.update({ where: { id }, data: { status: OutingStatus.CANCELLED } }),
   ]);
+  await respond(res, id);
+});
+
+/**
+ * Segna come rientrato (o di nuovo fuori) il materiale dei noleggi indicati.
+ * I noleggi delle uscite non passano dallo stato "Ritirato": l'attrezzatura è impegnata
+ * nei giorni dell'uscita e il rientro è una spunta dell'istruttore.
+ */
+async function setReturned(tx: Prisma.TransactionClient, rentalIds: string[], returned: boolean) {
+  const from = returned ? RentalStatus.RESERVED : RentalStatus.RETURNED;
+  const to = returned ? RentalStatus.RETURNED : RentalStatus.RESERVED;
+  const targets = await tx.rental.findMany({ where: { id: { in: rentalIds }, status: from }, select: { id: true } });
+  const ids = targets.map((r) => r.id);
+  await tx.rentalItem.updateMany({ where: { rentalId: { in: ids } }, data: { returnedAt: returned ? new Date() : null } });
+  await tx.rental.updateMany({ where: { id: { in: ids } }, data: { status: to } });
+}
+
+/** POST /api/outings/:id/return-all — tutto il materiale dell'uscita è rientrato. */
+outingsRouter.post("/:id/return-all", async (req, res) => {
+  const { id } = idParams.parse(req.params);
+  const outing = await loadOuting(id);
+  assertActive(outing);
+  await prisma.$transaction((tx) =>
+    setReturned(tx, outing.participants.flatMap((p) => (p.rental ? [p.rental.id] : [])), true),
+  );
   await respond(res, id);
 });
 
@@ -289,7 +250,7 @@ outingsRouter.post("/:id/participants", async (req, res) => {
   const { id } = idParams.parse(req.params);
   const { memberId, itemIds, travelMode } = participantSchema.parse(req.body);
   const outing = await loadOuting(id);
-  assertStatus(outing.status, [OutingStatus.PLANNED], "aggiungere partecipanti");
+  assertActive(outing);
 
   const member = await prisma.user.findUnique({ where: { id: memberId } });
   if (!member || !member.isActive) throw badRequest("Socio non trovato o disattivato");
@@ -326,7 +287,7 @@ function assertNotPaid(p: { paymentStatus: PaymentStatus }) {
   }
 }
 
-function findParticipant(outing: Awaited<ReturnType<typeof loadOuting>>, pid: string) {
+function findParticipant(outing: LoadedOuting, pid: string) {
   const participant = outing.participants.find((p) => p.id === pid);
   if (!participant) throw notFound("Partecipante non trovato");
   return participant;
@@ -336,7 +297,7 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
   const { itemIds, travelMode } = updateParticipantSchema.parse(req.body);
   const outing = await loadOuting(id);
-  assertStatus(outing.status, [OutingStatus.PLANNED], "modificare i partecipanti");
+  assertActive(outing);
   const participant = findParticipant(outing, pid);
   assertNotPaid(participant);
 
@@ -364,22 +325,23 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
 outingsRouter.delete("/:id/participants/:pid", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
   const outing = await loadOuting(id);
-  assertStatus(outing.status, [OutingStatus.PLANNED], "rimuovere partecipanti");
+  assertActive(outing);
   assertNotPaid(findParticipant(outing, pid));
   // Il noleggio collegato viene eliminato in cascata.
   await prisma.outingParticipant.delete({ where: { id: pid } });
   await respond(res, id);
 });
 
-/** POST /api/outings/:id/participants/:pid/return — rientro del materiale di un singolo socio. */
+/** POST /api/outings/:id/participants/:pid/return { returned } — rientro del materiale del socio (annullabile). */
 outingsRouter.post("/:id/participants/:pid/return", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
+  const { returned } = z.object({ returned: z.boolean().default(true) }).parse(req.body ?? {});
   const outing = await loadOuting(id);
-  assertStatus(outing.status, [OutingStatus.ONGOING], "registrare rientri");
+  assertActive(outing);
   const participant = findParticipant(outing, pid);
-  if (participant.rental?.status !== RentalStatus.ACTIVE) throw badRequest("Nessun materiale da far rientrare");
+  if (!participant.rental) throw badRequest("Il socio non ha attrezzatura del club");
 
-  await prisma.$transaction((tx) => returnRentals(tx, [participant.rental!.id]));
+  await prisma.$transaction((tx) => setReturned(tx, [participant.rental!.id], returned));
   await respond(res, id);
 });
 
@@ -388,11 +350,7 @@ outingsRouter.post("/:id/participants/:pid/payment", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
   const { paid } = z.object({ paid: z.boolean() }).parse(req.body);
   const outing = await loadOuting(id);
-  assertStatus(
-    outing.status,
-    [OutingStatus.PLANNED, OutingStatus.ONGOING, OutingStatus.COMPLETED],
-    "registrare incassi",
-  );
+  assertActive(outing);
   findParticipant(outing, pid);
 
   await prisma.outingParticipant.update({
