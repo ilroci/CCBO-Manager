@@ -8,6 +8,7 @@ import { equipmentRouter } from "./routes/equipment.routes";
 import { outingsRouter } from "./routes/outings.routes";
 import { priceListRouter } from "./routes/price-list.routes";
 import { rentalsRouter } from "./routes/rentals.routes";
+import { suggestionsRouter } from "./routes/suggestions.routes";
 import { usersRouter } from "./routes/users.routes";
 
 // Messaggi di validazione in italiano
@@ -40,6 +41,7 @@ export function createApp() {
   app.use("/api/price-list", priceListRouter);
   app.use("/api/rentals", rentalsRouter);
   app.use("/api/outings", outingsRouter);
+  app.use("/api/suggestions", suggestionsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

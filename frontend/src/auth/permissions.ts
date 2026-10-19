@@ -2,6 +2,7 @@ import {
   CalendarCheck,
   History,
   LayoutDashboard,
+  Lightbulb,
   Package,
   Receipt,
   Users,
@@ -69,6 +70,13 @@ export const NAV_ITEMS: NavItem[] = [
     description: "Prezzi giornalieri di noleggio",
     icon: Receipt,
     roles: ["ADMIN"],
+  },
+  {
+    to: "/suggestions",
+    label: "Consigli",
+    description: "Scrivi al direttivo idee e segnalazioni",
+    icon: Lightbulb,
+    roles: ALL_ROLES,
   },
 ];
 

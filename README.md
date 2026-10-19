@@ -31,6 +31,7 @@ docker compose up --build
 | Frontend (Vite, hot reload) | http://localhost:5173 |
 | API | http://localhost:3000 · `GET /health` |
 | PostgreSQL | `localhost:5432` · utente/password/db `canoa` |
+| Mailpit (email inviate dalla sezione Consigli) | http://localhost:8025 |
 
 All'avvio il backend applica le migrazioni ed esegue il seed: listino, 24 pezzi di
 attrezzatura di esempio, un utente demo per ruolo e gli istruttori/soci del club (elenco
@@ -103,7 +104,7 @@ npm run dev
 
 | Area | Admin | Istruttore | Socio |
 |---|:-:|:-:|:-:|
-| Dashboard, catalogo, i miei noleggi | ✓ | ✓ | ✓ |
+| Dashboard, catalogo, i miei noleggi, consigli | ✓ | ✓ | ✓ |
 | Uscite di club (wizard partecipanti, rientri, incassi) | ✓ | ✓ | |
 | Elenco iscritti (`GET /api/users`, serve al wizard uscite) | ✓ | ✓ | |
 | Gestione utenti (crea, modifica, ruolo, disattiva) | ✓ | | |
@@ -133,6 +134,8 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `GET` | `/api/price-list` | autenticato |
 | `POST` · `PATCH /:id` · `DELETE /:id` | `/api/price-list` | Admin |
 | `PUT` | `/api/price-list/service-fees/:type` | Admin (quota furgone, trasporto) |
+| `GET` | `/api/suggestions/config` | autenticato → `{ enabled, recipient }` |
+| `POST` | `/api/suggestions` | autenticato · `{ subject, message }` → email a `SUGGESTIONS_TO` (max 5/ora per utente) |
 | `GET` | `/api/rentals/availability?start=&end=` | autenticato |
 | `POST` | `/api/rentals/quote` | autenticato (anteprima costo) |
 | `POST` | `/api/rentals` | autenticato (prenota per sé) |
@@ -170,6 +173,11 @@ il browser può tenere in cache.
 - Start: `npm start`
 - Env: `DATABASE_URL`, `FRONTEND_URL` (più origini separate da virgola), `JWT_SECRET`
   (almeno 32 caratteri casuali; il Blueprint lo genera da solo), `NODE_VERSION=22`
+- Env facoltative per la sezione **Consigli**: `SMTP_HOST`, `SMTP_PORT` (587, oppure 465 con
+  `SMTP_SECURE=true`), `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `SUGGESTIONS_TO` (l'indirizzo che
+  riceve i messaggi). Senza `SMTP_HOST` o `SUGGESTIONS_TO` il form compare disattivato.
+  Con Gmail serve una *password per le app*. Il piano free di Render blocca le porte SMTP
+  in uscita: in quel caso serve un'istanza a pagamento.
 
 `--include=dev` serve perché `typescript`, `prisma` e i `@types/*` sono devDependencies
 e Render potrebbe ometterle se `NODE_ENV=production`.

@@ -18,6 +18,19 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # Email della sezione Consigli (facoltative: senza, il form è disattivato)
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: SUGGESTIONS_TO
+        sync: false
 
   - type: web
     name: canoa-club-frontend

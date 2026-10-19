@@ -11,6 +11,7 @@ import { OutingsPage } from "@/pages/OutingsPage";
 import { NewRentalPage } from "@/pages/NewRentalPage";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
 import { PriceListPage } from "@/pages/PriceListPage";
+import { SuggestionsPage } from "@/pages/SuggestionsPage";
 import { UsersPage } from "@/pages/UsersPage";
 
 /** Pagine già implementate; le altre voci di NAV_ITEMS mostrano un segnaposto. */
@@ -21,6 +22,7 @@ const PAGES: Record<string, React.ReactNode> = {
   "/outings": <OutingsPage />,
   "/users": <UsersPage />,
   "/price-list": <PriceListPage />,
+  "/suggestions": <SuggestionsPage />,
 };
 
 export default function App() {

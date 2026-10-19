@@ -28,4 +28,15 @@ export const env = {
   jwtSecret: jwtSecret(),
   /** Durata del token di accesso (formato `ms`: "8h", "7d", ...). */
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "8h",
+  /** Invio email (sezione Consigli). Senza SMTP_HOST e SUGGESTIONS_TO il form risulta disattivato. */
+  mail: {
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT ?? 587),
+    /** true per la porta 465 (TLS diretto); con 587 si usa STARTTLS. */
+    secure: process.env.SMTP_SECURE === "true",
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+    from: process.env.MAIL_FROM ?? process.env.SMTP_USER,
+    suggestionsTo: process.env.SUGGESTIONS_TO,
+  },
 } as const;

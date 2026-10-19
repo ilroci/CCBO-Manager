@@ -34,6 +34,11 @@ services:
       FRONTEND_URL: http://localhost:5173
       JWT_SECRET: solo-per-sviluppo-locale-non-usare-in-produzione
       JWT_EXPIRES_IN: 8h
+      # Le email (sezione Consigli) finiscono in Mailpit: http://localhost:8025
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      MAIL_FROM: "Canoa Club <noreply@canoaclub.local>"
+      SUGGESTIONS_TO: consigli@canoaclub.local
     ports:
       - "3000:3000"
     volumes:
@@ -42,6 +47,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  # Casella di posta finta per lo sviluppo: raccoglie le email senza inviarle davvero.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "8025:8025"
 
   frontend:
     build:
