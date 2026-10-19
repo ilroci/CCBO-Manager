@@ -57,6 +57,11 @@ export function getErrorMessage(error: unknown, fallback = "Si è verificato un 
   return fallback;
 }
 
+/** URL assoluto di una risorsa del backend (es. `photoUrl` delle foto, usato nei tag <img>). */
+export function apiUrl(path: string): string {
+  return `${baseURL ?? ""}${path}`;
+}
+
 export async function checkHealth(): Promise<{ status: string }> {
   const { data } = await api.get<{ status: string }>("/health");
   return data;

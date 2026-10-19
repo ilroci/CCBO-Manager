@@ -22,6 +22,8 @@ export function createApp() {
       },
     }),
   );
+  // Le richieste dell'inventario possono contenere una foto in base64: limite più ampio solo lì.
+  app.use("/api/equipment", express.json({ limit: "3mb" }));
   app.use(express.json());
 
   // Healthcheck per Render

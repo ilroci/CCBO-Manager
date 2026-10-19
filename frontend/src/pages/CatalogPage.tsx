@@ -28,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { api, getErrorMessage } from "@/lib/api";
+import { api, apiUrl, getErrorMessage } from "@/lib/api";
 import { CATEGORIES, CATEGORY_LABELS } from "@/lib/equipment";
 import type { EquipmentCategory, EquipmentItem, ItemStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -220,6 +220,7 @@ export function CatalogPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-0" />
                     <TableHead>N. serie</TableHead>
                     <TableHead>Categoria</TableHead>
                     <TableHead>Marca e modello</TableHead>
@@ -231,6 +232,9 @@ export function CatalogPage() {
                 <TableBody>
                   {visible.map((item) => (
                     <TableRow key={item.id} className={item.isArchived ? "opacity-60" : undefined}>
+                      <TableCell>
+                        <Thumbnail item={item} />
+                      </TableCell>
                       <TableCell className="font-mono text-xs">{item.serialNumber}</TableCell>
                       <TableCell>{CATEGORY_LABELS[item.category]}</TableCell>
                       <TableCell>
@@ -339,6 +343,26 @@ function Count({ n }: { n: number }) {
   return <span className="text-xs tabular-nums opacity-70">{n}</span>;
 }
 
+/** Miniatura per la vista tabella. */
+function Thumbnail({ item }: { item: EquipmentItem }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted">
+      {item.photoUrl && !failed ? (
+        <img
+          src={apiUrl(item.photoUrl)}
+          alt=""
+          loading="lazy"
+          className="size-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <ImageOff className="size-4 text-muted-foreground/50" aria-hidden />
+      )}
+    </div>
+  );
+}
+
 function EquipmentCard({ item, onEdit }: { item: EquipmentItem; onEdit?: () => void }) {
   const [photoFailed, setPhotoFailed] = useState(false);
   const showPhoto = item.photoUrl && !photoFailed;
@@ -348,7 +372,7 @@ function EquipmentCard({ item, onEdit }: { item: EquipmentItem; onEdit?: () => v
       <div className="flex aspect-[4/3] items-center justify-center bg-muted">
         {showPhoto ? (
           <img
-            src={item.photoUrl!}
+            src={apiUrl(item.photoUrl!)}
             alt={`${item.brand} ${item.model}`}
             loading="lazy"
             className="size-full object-cover"

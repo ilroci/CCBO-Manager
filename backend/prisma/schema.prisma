@@ -125,7 +125,6 @@ model EquipmentItem {
   size         String?
   /// Numero di serie univoco: obbligatorio per OGNI pezzo
   serialNumber String            @unique
-  photoUrl     String?
   description  String?
   status       ItemStatus        @default(AVAILABLE)
   /// Archiviazione logica (dismesso) senza perdere lo storico noleggi
@@ -133,9 +132,22 @@ model EquipmentItem {
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
+  /// Foto caricata dall'amministratore; l'API la espone come `photoUrl`
+  photo       EquipmentPhoto?
   rentalItems RentalItem[]
 
   @@index([category, status])
+}
+
+/// Immagine del pezzo salvata nel database: Render free non ha un disco persistente.
+/// Tabella separata così gli elenchi dell'inventario non caricano i byte delle foto.
+model EquipmentPhoto {
+  itemId    String        @id
+  item      EquipmentItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  data      Bytes
+  /// image/jpeg | image/png | image/webp
+  mimeType  String
+  updatedAt DateTime      @updatedAt
 }
 
 // ---------------------------------------------------------------------

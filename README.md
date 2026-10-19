@@ -124,8 +124,9 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `PATCH` | `/api/users/:id` | Admin |
 | `GET` | `/api/equipment?category=&status=&q=&includeArchived=` | autenticato (archiviati solo Admin) |
 | `GET` | `/api/equipment/:id` | autenticato |
-| `POST` | `/api/equipment` | Admin |
-| `PATCH` | `/api/equipment/:id` | Admin (anche `isArchived`) |
+| `GET` | `/api/equipment/:id/photo` | pubblico (serve ai tag `<img>`) |
+| `POST` | `/api/equipment` | Admin (foto inclusa, campo `photo`) |
+| `PATCH` | `/api/equipment/:id` | Admin (anche `isArchived`, `photo`) |
 | `DELETE` | `/api/equipment/:id` | Admin, solo pezzi senza storico noleggi |
 
 Errori: `{ error, details? }` con 400 (validazione), 401, 403, 404, 409 (email o numero di
@@ -133,6 +134,14 @@ serie già in uso, eliminazione di un pezzo con storico).
 
 Lo stato di un pezzo (Disponibile / In Noleggio) non si modifica a mano: lo aggiorneranno
 prenotazioni e uscite. I pezzi dismessi si archiviano, così lo storico noleggi resta.
+
+**Foto dell'attrezzatura.** L'amministratore le sceglie dal PC (clic o trascinamento). Il
+browser le ridimensiona (lato lungo massimo 1600 px), le converte in WebP e le invia come
+data URL nel campo `photo` (`null` = rimuovi). Il backend controlla il formato reale del file
+(JPEG, PNG o WebP) e il limite di 2 MB, poi le salva in PostgreSQL nella tabella
+`EquipmentPhoto`: Render free non ha un disco persistente e così non servono servizi esterni.
+Le API restituiscono `photoUrl` (`/api/equipment/:id/photo?v=...`), un URL versionato che
+il browser può tenere in cache.
 
 ## Deploy su Render + Neon
 

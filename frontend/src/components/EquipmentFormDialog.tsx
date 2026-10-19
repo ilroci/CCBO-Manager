@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { FormError } from "@/components/FormError";
+import { PhotoPicker, type PhotoChange } from "@/components/PhotoPicker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { api, getErrorMessage } from "@/lib/api";
+import { api, apiUrl, getErrorMessage } from "@/lib/api";
 import { CATEGORIES } from "@/lib/equipment";
 import type { EquipmentItem } from "@/lib/types";
 
@@ -31,12 +32,12 @@ export function EquipmentFormDialog({
 }) {
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
-  const [photoPreview, setPhotoPreview] = useState<string>();
+  const [photo, setPhoto] = useState<PhotoChange>(undefined);
   const isNew = editing === null;
 
   function close() {
     setError(undefined);
-    setPhotoPreview(undefined);
+    setPhoto(undefined);
     onClose();
   }
 
@@ -46,14 +47,15 @@ export function EquipmentFormDialog({
     const text = (name: string) => String(form.get(name) ?? "").trim();
 
     // Stringa vuota sui campi opzionali = svuota il campo (il backend la converte in null).
+    // `photo` viaggia solo se è cambiata: data URL = nuova foto, null = rimossa.
     const payload = {
       category: text("category"),
       brand: text("brand"),
       model: text("model"),
       size: text("size"),
       serialNumber: text("serialNumber"),
-      photoUrl: text("photoUrl"),
       description: text("description"),
+      ...(photo !== undefined ? { photo } : {}),
     };
 
     setSaving(true);
@@ -61,7 +63,7 @@ export function EquipmentFormDialog({
     try {
       if (isNew) await api.post("/api/equipment", payload);
       else await api.patch(`/api/equipment/${editing!.id}`, payload);
-      setPhotoPreview(undefined);
+      setPhoto(undefined);
       onSaved();
     } catch (err) {
       setError(getErrorMessage(err));
@@ -69,8 +71,6 @@ export function EquipmentFormDialog({
       setSaving(false);
     }
   }
-
-  const preview = photoPreview ?? editing?.photoUrl ?? undefined;
 
   return (
     <Dialog open={editing !== undefined} onOpenChange={(open) => !open && close()}>
@@ -127,24 +127,13 @@ export function EquipmentFormDialog({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="photoUrl">URL foto</Label>
-            <Input
-              id="photoUrl"
-              name="photoUrl"
-              type="url"
-              placeholder="https://…"
-              defaultValue={editing?.photoUrl ?? ""}
-              onBlur={(event) => setPhotoPreview(event.currentTarget.value.trim())}
+            <Label>Foto</Label>
+            <PhotoPicker
+              currentUrl={editing?.photoUrl ? apiUrl(editing.photoUrl) : null}
+              value={photo}
+              onChange={setPhoto}
+              onError={setError}
             />
-            {preview && (
-              <img
-                src={preview}
-                alt="Anteprima"
-                className="h-32 w-full rounded-md border object-cover"
-                onError={(event) => (event.currentTarget.hidden = true)}
-                onLoad={(event) => (event.currentTarget.hidden = false)}
-              />
-            )}
           </div>
           <div className="grid gap-2">
             <Label htmlFor="description">Descrizione</Label>

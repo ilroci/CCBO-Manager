@@ -9,6 +9,18 @@ const UNIQUE_FIELD_LABELS: Record<string, string> = {
   serialNumber: "numero di serie",
 };
 
+function isBodyParserError(err: unknown): err is { status: number } {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "type" in err &&
+    typeof err.type === "string" &&
+    err.type.startsWith("entity.") &&
+    "status" in err &&
+    typeof err.status === "number"
+  );
+}
+
 export function notFoundHandler(_req: Request, res: Response) {
   res.status(404).json({ error: "Risorsa non trovata" });
 }
@@ -17,6 +29,14 @@ export function notFoundHandler(_req: Request, res: Response) {
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (err instanceof HttpError) {
     res.status(err.status).json({ error: err.message });
+    return;
+  }
+
+  // Errori di body-parser: JSON malformato (400) o richiesta troppo grande (413).
+  if (isBodyParserError(err)) {
+    res.status(err.status).json({
+      error: err.status === 413 ? "Richiesta troppo grande" : "Corpo della richiesta non valido",
+    });
     return;
   }
 
