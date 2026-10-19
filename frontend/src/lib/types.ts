@@ -92,7 +92,17 @@ export interface Rental {
 
 export type OutingStatus = "ACTIVE" | "CANCELLED";
 export type TravelMode = "VAN" | "TRANSPORT_ONLY" | "AUTONOMOUS";
-export type PaymentStatus = "PENDING" | "PAID";
+/** Voci riscosse separatamente in un'uscita. */
+export type CollectionCategory = "RENTAL" | "TRANSPORT" | "VAN";
+
+export interface Collection {
+  category: CollectionCategory;
+  amount: string;
+  /** Voce furgone: insieme alla quota si riscuotono i costi vivi, che non hanno importo. */
+  includesExpenses: boolean;
+  /** null = ancora da riscuotere */
+  payment: { amount: string; paidAt: string; confirmedBy: Pick<User, "id" | "firstName" | "lastName" | "email"> | null } | null;
+}
 
 type Person = Pick<User, "id" | "firstName" | "lastName" | "email">;
 
@@ -103,11 +113,9 @@ export interface OutingParticipant {
   rentalAmount: string;
   transportAmount: string;
   vanSeatAmount: string;
-  expensesShare: string;
+  /** Noleggio + trasporto + quota furgone (costi vivi esclusi). */
   totalAmount: string;
-  paymentStatus: PaymentStatus;
-  paidAt: string | null;
-  paidConfirmedBy: Person | null;
+  collections: Collection[];
   rental: {
     id: string;
     status: RentalStatus;
@@ -129,7 +137,15 @@ export interface Outing {
   vanSeats: number | null;
   notes: string | null;
   participants: OutingParticipant[];
-  totals: { participants: number; aboardVan: number; toReturn: number; total: string; collected: string };
+  totals: {
+    participants: number;
+    aboardVan: number;
+    toReturn: number;
+    total: string;
+    collected: string;
+    pendingCollections: number;
+    pendingExpenses: number;
+  };
 }
 
 /** Tariffa fissa per uscita di un servizio furgone (oggi: solo trasporto attrezzatura). */
@@ -146,6 +162,5 @@ export interface ParticipantQuote {
   rentalAmount: string;
   transportAmount: string;
   vanSeatAmount: string;
-  expensesShare: string;
   totalAmount: string;
 }

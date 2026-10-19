@@ -146,7 +146,7 @@ export function ParticipantWizard({
     try {
       const { data } = isEdit
         ? await api.patch<{ outing: Outing }>(`/api/outings/${outing.id}/participants/${target!.id}`, {
-            itemIds,
+            ...(rentalLocked ? {} : { itemIds }),
             travelMode,
           })
         : await api.post<{ outing: Outing }>(`/api/outings/${outing.id}/participants`, {
@@ -163,6 +163,12 @@ export function ParticipantWizard({
   }
 
   const firstStep = isEdit ? 1 : 0;
+  // In modifica: una voce già riscossa non può cambiare (lo verifica anche il backend).
+  const paidCategories = new Set(target?.collections.filter((c) => c.payment).map((c) => c.category) ?? []);
+  const rentalLocked = paidCategories.has("RENTAL");
+  const modeLocked =
+    (target?.travelMode === "VAN" && paidCategories.has("VAN")) ||
+    (target?.travelMode === "TRANSPORT_ONLY" && paidCategories.has("TRANSPORT"));
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -248,7 +254,21 @@ export function ParticipantWizard({
           </div>
         )}
 
-        {step === 1 && (
+        {step === 1 && rentalLocked && (
+          <div className="grid gap-3 text-sm">
+            <Notice>Il noleggio è già stato riscosso: per cambiare l'attrezzatura annulla prima la riscossione.</Notice>
+            <ul className="grid gap-0.5 text-muted-foreground">
+              {target?.rental?.items.map(({ item }) => (
+                <li key={item.id}>
+                  {CATEGORY_LABELS[item.category]}: {item.brand} {item.model}{" "}
+                  <span className="font-mono text-xs">{item.serialNumber}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {step === 1 && !rentalLocked && (
           <div className="grid gap-4">
             <p className="text-sm font-medium">Il socio deve noleggiare attrezzatura del club per l'uscita?</p>
             <div className="grid grid-cols-2 gap-2">
@@ -282,8 +302,15 @@ export function ParticipantWizard({
         {step === 2 && (
           <div className="grid gap-3" role="radiogroup" aria-label="Modalità di viaggio">
             <p className="text-sm font-medium">Qual è la modalità di viaggio/trasporto del socio?</p>
+            {modeLocked && (
+              <Notice>
+                {target?.travelMode === "VAN" ? "La quota furgone" : "Il trasporto"} è già stato riscosso: per cambiare
+                modalità annulla prima la riscossione.
+              </Notice>
+            )}
             {TRAVEL_MODES.map((mode) => {
-              const disabled = mode.value === "VAN" && vanFull && travelMode !== "VAN";
+              const disabled =
+                (mode.value === "VAN" && vanFull && travelMode !== "VAN") || (modeLocked && mode.value !== travelMode);
               return (
                 <button
                   key={mode.value}
@@ -311,7 +338,9 @@ export function ParticipantWizard({
                     </span>
                     <span className="block text-sm text-muted-foreground">{mode.description}</span>
                     {mode.value === "VAN" && vanSeatFee && (
-                      <span className="block text-xs font-medium">Quota furgone {formatEuro(vanSeatFee)} per uscita</span>
+                      <span className="block text-xs font-medium">
+                        Quota furgone {formatEuro(vanSeatFee)} per uscita + costi vivi (importo a parte)
+                      </span>
                     )}
                     {mode.value === "TRANSPORT_ONLY" && transportFee && (
                       <span className="block text-xs font-medium">{formatEuro(transportFee)} per uscita</span>
@@ -326,8 +355,8 @@ export function ParticipantWizard({
               );
             })}
             <p className="text-xs text-muted-foreground">
-              La ripartizione delle spese vive (carburante e caselli) tra chi viaggia sul furgone non è ancora
-              definita: per ora l'opzione A addebita solo la quota furgone.
+              Chi sale sul furgone paga anche i costi vivi (carburante e caselli): si riscuotono insieme alla quota
+              furgone, ma l'importo non è gestito dal gestionale.
             </p>
           </div>
         )}
@@ -380,10 +409,16 @@ export function ParticipantWizard({
                     </div>
                   )}
                   {travelMode === "VAN" && (
-                    <div className="flex justify-between gap-2">
-                      <span>Quota furgone</span>
-                      <span className="tabular-nums">{formatEuro(quote.vanSeatAmount)}</span>
-                    </div>
+                    <>
+                      <div className="flex justify-between gap-2">
+                        <span>Quota furgone</span>
+                        <span className="tabular-nums">{formatEuro(quote.vanSeatAmount)}</span>
+                      </div>
+                      <div className="flex justify-between gap-2 text-muted-foreground">
+                        <span>Costi vivi (carburante e caselli)</span>
+                        <span>da pagare, importo a parte</span>
+                      </div>
+                    </>
                   )}
                   {travelMode === "TRANSPORT_ONLY" && (
                     <div className="flex justify-between gap-2">
@@ -399,8 +434,14 @@ export function ParticipantWizard({
                   )}
                   <div className="mt-1 flex justify-between gap-2 border-t pt-2 text-base font-semibold">
                     <span>Quota individuale</span>
-                    <span className="tabular-nums">{formatEuro(quote.totalAmount)}</span>
+                    <span className="tabular-nums">
+                      {formatEuro(quote.totalAmount)}
+                      {travelMode === "VAN" && <span className="font-normal text-muted-foreground"> + costi vivi</span>}
+                    </span>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Noleggio, trasporto e furgone si riscuotono separatamente dalla pagina dell'uscita.
+                  </p>
                 </>
               )}
             </div>
@@ -427,5 +468,13 @@ export function ParticipantWizard({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function Notice({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+      {children}
+    </div>
   );
 }

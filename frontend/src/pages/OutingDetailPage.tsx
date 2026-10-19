@@ -1,30 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import {
-  ArrowLeft,
-  Ban,
-  CircleCheck,
-  Loader2,
-  Lock,
-  MapPin,
-  PackageCheck,
-  Pencil,
-  Trash2,
-  UserPlus,
-  Undo2,
-} from "lucide-react";
+import { ArrowLeft, Ban, Loader2, MapPin, PackageCheck, Pencil, Trash2, UserPlus } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FormError } from "@/components/FormError";
-import { ItemThumbnail } from "@/components/ItemThumbnail";
 import { OutingFormDialog, type OutingEditing } from "@/components/OutingFormDialog";
+import { ParticipantCard } from "@/components/ParticipantCard";
 import { ParticipantWizard, type WizardTarget } from "@/components/ParticipantWizard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatPeriod } from "@/lib/dates";
 import { formatEuro } from "@/lib/money";
-import { OUTING_PHASE_CLASSES, OUTING_PHASE_LABELS, outingPhase, TRAVEL_MODE_LABELS } from "@/lib/outings";
+import { OUTING_PHASE_CLASSES, OUTING_PHASE_LABELS, outingPhase } from "@/lib/outings";
 import type { Outing, OutingParticipant } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -171,11 +158,23 @@ export function OutingDetailPage() {
           label="Sul furgone"
           value={`${outing.totals.aboardVan}${outing.vanSeats ? ` / ${outing.vanSeats}` : ""}`}
         />
-        <Stat label="Totale quote" value={formatEuro(outing.totals.total)} />
+        <Stat label="Totale quote" value={formatEuro(outing.totals.total)} hint="Costi vivi esclusi" />
         <Stat
-          label="Incassato"
+          label="Riscosso"
           value={formatEuro(outing.totals.collected)}
-          hint={toCollect > 0 ? `${formatEuro(toCollect)} da incassare` : outing.participants.length ? "Tutto incassato" : undefined}
+          hint={
+            outing.totals.pendingCollections === 0
+              ? outing.participants.length
+                ? "Tutto riscosso"
+                : undefined
+              : [
+                  `${formatEuro(toCollect)} da riscuotere`,
+                  outing.totals.pendingExpenses > 0 &&
+                    `costi vivi: ${outing.totals.pendingExpenses} ${outing.totals.pendingExpenses === 1 ? "socio" : "soci"}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+          }
         />
       </div>
 
@@ -203,140 +202,18 @@ export function OutingDetailPage() {
         </p>
       ) : (
         <div className="grid gap-3">
-          {outing.participants.map((p) => {
-            const busy = busyId === p.id;
-            const paid = p.paymentStatus === "PAID";
-            const amount = Number(p.totalAmount);
-            const mode = TRAVEL_MODE_LABELS[p.travelMode];
-            return (
-              <Card key={p.id} className="gap-3 py-4">
-                <CardContent className="grid gap-3 px-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="font-medium">
-                        {p.member.lastName} {p.member.firstName}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {mode.letter}) {mode.short}
-                        {p.rental?.status === "RESERVED" && " · materiale da far rientrare"}
-                        {p.rental?.status === "RETURNED" && " · materiale rientrato"}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg font-semibold tabular-nums">{formatEuro(p.totalAmount)}</span>
-                      {amount > 0 && (
-                        <Badge
-                          className={cn(
-                            "border-transparent",
-                            paid
-                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                              : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-                          )}
-                        >
-                          {paid ? "Pagato" : "Da incassare"}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  {p.rental ? (
-                    <div className="flex flex-wrap gap-2">
-                      {p.rental.items.map(({ id: rowId, item, returnedAt }) => (
-                        <div key={rowId} className="flex items-center gap-2 rounded-md border py-1 pr-3 pl-1 text-sm">
-                          <ItemThumbnail item={item} className="size-8" />
-                          <div className="leading-tight">
-                            <div>
-                              {item.brand} {item.model}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              <span className="font-mono">{item.serialNumber}</span>
-                              {returnedAt && " · rientrato"}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-muted-foreground">Nessun noleggio: attrezzatura propria.</div>
-                  )}
-
-                  <div className="flex flex-wrap items-end justify-between gap-3">
-                    <div className="text-xs text-muted-foreground">
-                      {[
-                        ...(p.rental?.charges.map((c) => `${c.name} ${formatEuro(c.dailyPrice)} × ${c.days}`) ?? []),
-                        ...(Number(p.vanSeatAmount) > 0 ? [`Quota furgone ${formatEuro(p.vanSeatAmount)}`] : []),
-                        ...(Number(p.transportAmount) > 0 ? [`Trasporto attrezzatura ${formatEuro(p.transportAmount)}`] : []),
-                      ].join(" · ")}
-                      {paid && p.paidConfirmedBy && (
-                        <div>
-                          Incasso confermato da {p.paidConfirmedBy.firstName} {p.paidConfirmedBy.lastName}
-                          {p.paidAt && ` il ${new Date(p.paidAt).toLocaleDateString("it-IT")}`}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {!cancelled && paid && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground" title="Annulla l'incasso per modificare">
-                          <Lock className="size-3" /> Pagato: annulla l'incasso per modificare
-                        </span>
-                      )}
-                      {!cancelled && !paid && (
-                        <>
-                          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setWizard(p)}>
-                            <Pencil /> Modifica
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => setConfirm({ kind: "remove", participant: p })}
-                          >
-                            <Trash2 /> Rimuovi
-                          </Button>
-                        </>
-                      )}
-                      {!cancelled && p.rental?.status === "RESERVED" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => void participantAction(p, "return", { returned: true })}
-                        >
-                          <PackageCheck /> Materiale rientrato
-                        </Button>
-                      )}
-                      {!cancelled && p.rental?.status === "RETURNED" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => void participantAction(p, "return", { returned: false })}
-                        >
-                          <Undo2 /> Annulla rientro
-                        </Button>
-                      )}
-                      {!cancelled && amount > 0 && (
-                        paid ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => void participantAction(p, "payment", { paid: false })}
-                          >
-                            <Undo2 /> Annulla incasso
-                          </Button>
-                        ) : (
-                          <Button size="sm" disabled={busy} onClick={() => void participantAction(p, "payment", { paid: true })}>
-                            <CircleCheck /> Conferma incasso
-                          </Button>
-                        )
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          {outing.participants.map((p) => (
+            <ParticipantCard
+              key={p.id}
+              participant={p}
+              editable={!cancelled}
+              busy={busyId === p.id}
+              onEdit={() => setWizard(p)}
+              onRemove={() => setConfirm({ kind: "remove", participant: p })}
+              onCollect={(category, paid) => void participantAction(p, `payments/${category}`, { paid })}
+              onReturn={(returned) => void participantAction(p, "return", { returned })}
+            />
+          ))}
         </div>
       )}
 

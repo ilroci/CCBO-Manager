@@ -1,9 +1,16 @@
-import { OutingStatus, PaymentStatus, RentalStatus, Role, TravelMode, type Prisma } from "@prisma/client";
+import { CollectionCategory, OutingStatus, RentalStatus, Role, TravelMode, type Prisma } from "@prisma/client";
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { calendarDays, dateSchema, formatDate, parseDate, todayInItaly } from "../lib/dates";
 import { badRequest, HttpError, notFound } from "../lib/http-error";
-import { assertVanSeats, outingInclude, quoteParticipant, syncParticipant, toOutingDto } from "../lib/outings";
+import {
+  assertVanSeats,
+  outingInclude,
+  quoteParticipant,
+  SERVICE_CATEGORY,
+  syncParticipant,
+  toOutingDto,
+} from "../lib/outings";
 import { prisma } from "../lib/prisma";
 import { MAX_RENTAL_DAYS } from "../lib/rentals";
 import { authenticate, authorize } from "../middleware/auth";
@@ -13,8 +20,8 @@ import { authenticate, authorize } from "../middleware/auth";
  * operare su qualunque uscita, così un collega può subentrare.
  *
  * Un'uscita resta sempre modificabile (dati, date, partecipanti) finché non viene annullata.
- * L'unico blocco riguarda i soci con incasso confermato: la loro quota non cambia finché
- * l'incasso non viene annullato.
+ * Le voci di ogni socio (noleggio, trasporto, furgone + costi vivi) si riscuotono separatamente:
+ * una voce riscossa non può cambiare finché la riscossione non viene annullata.
  */
 export const outingsRouter = Router();
 
@@ -123,8 +130,9 @@ outingsRouter.patch("/:id", async (req, res) => {
 
   if (datesChanged) {
     assertPeriod(newStart, newEnd);
-    if (outing.participants.some((p) => p.paymentStatus === PaymentStatus.PAID && p.rental)) {
-      throw new HttpError(409, "Ci sono soci con noleggio e incasso confermato: annulla l'incasso prima di cambiare le date");
+    // I giorni cambiano solo il prezzo del noleggio: quota furgone e trasporto sono per uscita.
+    if (outing.participants.some((p) => p.payments.some((pay) => pay.category === CollectionCategory.RENTAL))) {
+      throw new HttpError(409, "Ci sono noleggi già riscossi: annulla la riscossione prima di cambiare le date");
     }
   }
 
@@ -165,8 +173,8 @@ outingsRouter.post("/:id/cancel", async (req, res) => {
   const { id } = idParams.parse(req.params);
   const outing = await loadOuting(id);
   assertActive(outing);
-  if (outing.participants.some((p) => p.paymentStatus === PaymentStatus.PAID)) {
-    throw new HttpError(409, "Ci sono incassi confermati: annullali prima di annullare l'uscita");
+  if (outing.participants.some((p) => p.payments.length > 0)) {
+    throw new HttpError(409, "Ci sono riscossioni confermate: annullale prima di annullare l'uscita");
   }
 
   await prisma.$transaction([
@@ -240,7 +248,6 @@ outingsRouter.post("/:id/quote", async (req, res) => {
     rentalAmount: quote.rentalAmount.toFixed(2),
     transportAmount: quote.transportAmount.toFixed(2),
     vanSeatAmount: quote.vanSeatAmount.toFixed(2),
-    expensesShare: quote.expensesShare.toFixed(2),
     totalAmount: quote.totalAmount.toFixed(2),
   });
 });
@@ -280,13 +287,6 @@ const updateParticipantSchema = z.object({
   travelMode: z.enum(TravelMode).optional(),
 });
 
-/** Il socio ha già pagato: la quota non può cambiare finché l'incasso non viene annullato. */
-function assertNotPaid(p: { paymentStatus: PaymentStatus }) {
-  if (p.paymentStatus === PaymentStatus.PAID) {
-    throw new HttpError(409, "Incasso già confermato: annullalo prima di modificare il partecipante");
-  }
-}
-
 function findParticipant(outing: LoadedOuting, pid: string) {
   const participant = outing.participants.find((p) => p.id === pid);
   if (!participant) throw notFound("Partecipante non trovato");
@@ -299,14 +299,34 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
   const outing = await loadOuting(id);
   assertActive(outing);
   const participant = findParticipant(outing, pid);
-  assertNotPaid(participant);
+
+  const paid = new Set(participant.payments.map((pay) => pay.category));
+  const currentItems = participant.rental?.items.map((row) => row.itemId) ?? [];
+  const itemsChanged =
+    itemIds !== undefined &&
+    (itemIds.length !== currentItems.length || itemIds.some((itemId) => !currentItems.includes(itemId)));
+  const modeChanged = travelMode !== undefined && travelMode !== participant.travelMode;
+
+  // Una voce riscossa non cambia: prima si annulla la riscossione.
+  if (itemsChanged && paid.has(CollectionCategory.RENTAL)) {
+    throw new HttpError(409, "Noleggio già riscosso: annulla la riscossione prima di cambiare l'attrezzatura");
+  }
+  const currentService = SERVICE_CATEGORY[participant.travelMode];
+  if (modeChanged && currentService && paid.has(currentService)) {
+    throw new HttpError(
+      409,
+      currentService === CollectionCategory.VAN
+        ? "Quota furgone già riscossa: annulla la riscossione prima di cambiare la modalità di viaggio"
+        : "Trasporto già riscosso: annulla la riscossione prima di cambiare la modalità di viaggio",
+    );
+  }
 
   await prisma.$transaction(async (tx) => {
-    if (travelMode) {
+    if (modeChanged) {
       await tx.outingParticipant.update({ where: { id: pid }, data: { travelMode } });
       await assertVanSeats(tx, id, outing.vanSeats);
     }
-    // La quota dipende sia dai pezzi sia dalla modalità di viaggio: si ricalcola sempre.
+    // Il noleggio si ricalcola solo se cambiano i pezzi; quota furgone/trasporto sempre.
     await syncParticipant(
       tx,
       outing,
@@ -316,7 +336,7 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
         rentalId: participant.rental?.id ?? null,
         travelMode: travelMode ?? participant.travelMode,
       },
-      itemIds ?? participant.rental?.items.map((row) => row.itemId) ?? [],
+      itemsChanged ? itemIds : undefined,
     );
   });
   await respond(res, id);
@@ -326,7 +346,9 @@ outingsRouter.delete("/:id/participants/:pid", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
   const outing = await loadOuting(id);
   assertActive(outing);
-  assertNotPaid(findParticipant(outing, pid));
+  if (findParticipant(outing, pid).payments.length > 0) {
+    throw new HttpError(409, "Il socio ha voci già riscosse: annulla le riscossioni prima di rimuoverlo");
+  }
   // Il noleggio collegato viene eliminato in cascata.
   await prisma.outingParticipant.delete({ where: { id: pid } });
   await respond(res, id);
@@ -345,19 +367,39 @@ outingsRouter.post("/:id/participants/:pid/return", async (req, res) => {
   await respond(res, id);
 });
 
-/** POST /api/outings/:id/participants/:pid/payment { paid } — conferma (o annulla) l'incasso. */
-outingsRouter.post("/:id/participants/:pid/payment", async (req, res) => {
-  const { id, pid } = participantParams.parse(req.params);
+const paymentParams = participantParams.extend({ category: z.enum(CollectionCategory) });
+
+/**
+ * POST /api/outings/:id/participants/:pid/payments/:category { paid } — riscuote (o annulla
+ * la riscossione di) una singola voce: RENTAL noleggio, TRANSPORT trasporto attrezzatura,
+ * VAN quota furgone insieme ai costi vivi.
+ */
+outingsRouter.post("/:id/participants/:pid/payments/:category", async (req, res) => {
+  const { id, pid, category } = paymentParams.parse(req.params);
   const { paid } = z.object({ paid: z.boolean() }).parse(req.body);
   const outing = await loadOuting(id);
   assertActive(outing);
-  findParticipant(outing, pid);
+  const participant = findParticipant(outing, pid);
 
-  await prisma.outingParticipant.update({
-    where: { id: pid },
-    data: paid
-      ? { paymentStatus: PaymentStatus.PAID, paidAt: new Date(), paidConfirmedById: req.user!.id }
-      : { paymentStatus: PaymentStatus.PENDING, paidAt: null, paidConfirmedById: null },
+  if (!paid) {
+    await prisma.outingPayment.deleteMany({ where: { participantId: pid, category } });
+    await respond(res, id);
+    return;
+  }
+
+  const amount =
+    category === CollectionCategory.RENTAL
+      ? participant.rental && participant.rentalAmount
+      : category === CollectionCategory.TRANSPORT
+        ? participant.travelMode === TravelMode.TRANSPORT_ONLY && participant.transportAmount
+        : participant.travelMode === TravelMode.VAN && participant.vanSeatAmount;
+  if (!amount) throw badRequest("Questa voce non riguarda il socio");
+  if (participant.payments.some((pay) => pay.category === category)) {
+    throw new HttpError(409, "Voce già riscossa");
+  }
+
+  await prisma.outingPayment.create({
+    data: { participantId: pid, category, amount, confirmedById: req.user!.id },
   });
   await respond(res, id);
 });

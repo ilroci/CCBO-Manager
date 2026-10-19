@@ -146,7 +146,8 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `POST` | `/api/outings/:id/quote` | Admin, Istruttore (riepilogo quota del wizard) |
 | `POST` | `/api/outings/:id/participants` | Admin, Istruttore (wizard) |
 | `PATCH` · `DELETE` | `/api/outings/:id/participants/:pid` | Admin, Istruttore |
-| `POST` | `/api/outings/:id/participants/:pid/return` · `/payment` | Admin, Istruttore (annullabili) |
+| `POST` | `/api/outings/:id/participants/:pid/return` | Admin, Istruttore (annullabile) |
+| `POST` | `/api/outings/:id/participants/:pid/payments/:category` | Admin, Istruttore: riscuote `RENTAL`, `TRANSPORT` o `VAN` (`{ paid }`, annullabile) |
 
 Errori: `{ error, details? }` con 400 (validazione), 401, 403, 404, 409 (email o numero di
 serie già in uso, eliminazione di un pezzo con storico).
@@ -213,15 +214,20 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   del socio. Il rientro del materiale è una spunta (per socio o "tutto rientrato"), annullabile;
   se si cambiano i pezzi di un socio, il suo materiale torna "da far rientrare". Cambiare le
   date sposta i noleggi e ricalcola le quote. Se l'uscita indica i posti sul furgone, i
-  partecipanti "A bordo" non possono superarli. Un incasso confermato blocca le modifiche a
-  quel socio finché non viene annullato. Qualunque istruttore può gestire qualunque uscita.
+  partecipanti "A bordo" non possono superarli. Qualunque istruttore può gestire qualunque uscita.
+- **Riscossioni**: ogni partecipante ha fino a tre voci, riscosse separatamente e anche in
+  momenti diversi (`OutingPayment`, una per voce, con data e chi l'ha confermata):
+  (1) **noleggio**, (2) **trasporto attrezzatura**, (3) **quota furgone + costi vivi**, mostrati
+  separati ma riscossi insieme; i costi vivi non hanno importo nel gestionale. Una voce riscossa
+  non può cambiare finché la riscossione non viene annullata: noleggio riscosso → pezzi e date
+  bloccati; furgone o trasporto riscosso → modalità di viaggio bloccata. Per rimuovere un socio
+  o annullare l'uscita vanno prima annullate le riscossioni.
 - **Quota individuale** = noleggio (voci × giorni dell'uscita) + servizio furgone, a tariffa
   fissa per uscita modificabile dall'admin nel Listino (`ServiceFee`):
   A) a bordo → **quota furgone 5 €** (VAN_SEAT); B) solo trasporto attrezzatura → **5 €**
-  (EQUIPMENT_TRANSPORT); C) autonomo → 0 €. La quota delle **spese vive** (carburante e caselli,
-  `expensesShare`, `Outing.fuelCost/tollCost`) è predisposta ma vale 0 € finché non ne viene
-  definito il criterio di ripartizione. Ogni partecipante conserva gli importi applicati;
-  cambiano solo se lo si modifica.
+  (EQUIPMENT_TRANSPORT); C) autonomo → 0 €. Chi è a bordo paga anche i **costi vivi**
+  (carburante e caselli), indicati come voce da pagare ma senza importo. Ogni partecipante
+  conserva gli importi applicati; cambiano solo se lo si modifica.
 - **Prenotazioni**: date di calendario inclusive (`@db.Date`): dal sabato alla domenica = 2
   giorni; prenotabili da oggi (ora italiana), per al massimo 30 giorni. Ciclo di vita:
   Prenotato → Ritirato (pezzi "In noleggio") → Rientrato (pezzi "Disponibile"), oppure
