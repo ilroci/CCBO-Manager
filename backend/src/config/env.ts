@@ -9,6 +9,14 @@ function required(name: string): string {
   return value;
 }
 
+function jwtSecret(): string {
+  const value = required("JWT_SECRET");
+  if (value.length < 32) {
+    throw new Error("JWT_SECRET deve essere lungo almeno 32 caratteri");
+  }
+  return value;
+}
+
 export const env = {
   port: Number(process.env.PORT ?? 3000),
   databaseUrl: required("DATABASE_URL"),
@@ -17,4 +25,7 @@ export const env = {
     .split(",")
     .map((url) => url.trim().replace(/\/$/, ""))
     .filter(Boolean),
+  jwtSecret: jwtSecret(),
+  /** Durata del token di accesso (formato `ms`: "8h", "7d", ...). */
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "8h",
 } as const;

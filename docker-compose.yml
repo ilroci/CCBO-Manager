@@ -1,0 +1,65 @@
+# Ambiente di sviluppo locale completo: PostgreSQL + API + frontend con hot reload.
+#
+#   docker compose up --build      → http://localhost:5173
+#
+# Al primo avvio il backend applica le migrazioni e crea gli utenti demo (vedi README).
+name: canoa-club
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: canoa
+      POSTGRES_PASSWORD: canoa
+      POSTGRES_DB: canoa
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U canoa -d canoa"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+      target: dev
+      additional_contexts:
+        extra-certs: ./docker/certs
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://canoa:canoa@db:5432/canoa
+      FRONTEND_URL: http://localhost:5173
+      JWT_SECRET: solo-per-sviluppo-locale-non-usare-in-produzione
+      JWT_EXPIRES_IN: 8h
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+      additional_contexts:
+        extra-certs: ./docker/certs
+    environment:
+      # Usato dal browser, quindi punta alla porta pubblicata sull'host
+      VITE_API_URL: http://localhost:3000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
