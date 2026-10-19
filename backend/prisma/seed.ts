@@ -24,7 +24,7 @@ const { CANOE, PADDLE, HELMET, WATER_JACKET, SPRAY_DECK, WETSUIT, LIFE_JACKET } 
 const rentalOptions = [
   {
     name: "Pacchetto Kayak",
-    description: "Kayak, pagaia, paraspruzzi e salvagente. Casco compreso.",
+    description: "Kayak, pagaia, paraspruzzi, salvagente e casco",
     categories: [CANOE, PADDLE, SPRAY_DECK, LIFE_JACKET, HELMET],
     dailyPrice: "15",
     sortOrder: 1,

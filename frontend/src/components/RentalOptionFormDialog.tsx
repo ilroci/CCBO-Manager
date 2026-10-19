@@ -132,7 +132,7 @@ export function RentalOptionFormDialog({
               id="description"
               name="description"
               defaultValue={editing?.description ?? ""}
-              placeholder="es. Kayak, pagaia, paraspruzzi e salvagente. Casco compreso."
+              placeholder="es. Kayak, pagaia, paraspruzzi, salvagente e casco"
             />
           </div>
           <FormError message={error} />
