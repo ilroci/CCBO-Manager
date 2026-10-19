@@ -128,6 +128,8 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `POST` | `/api/equipment` | Admin (foto inclusa, campo `photo`) |
 | `PATCH` | `/api/equipment/:id` | Admin (anche `isArchived`, `photo`) |
 | `DELETE` | `/api/equipment/:id` | Admin, solo pezzi senza storico noleggi |
+| `GET` | `/api/price-list` | autenticato |
+| `POST` · `PATCH /:id` · `DELETE /:id` | `/api/price-list` | Admin |
 
 Errori: `{ error, details? }` con 400 (validazione), 401, 403, 404, 409 (email o numero di
 serie già in uso, eliminazione di un pezzo con storico).
@@ -176,9 +178,15 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
 - **Esclusività trasporto/furgone**: modellata col singolo campo `OutingParticipant.travelMode`
   (`VAN` | `TRANSPORT_ONLY` | `AUTONOMOUS`), quindi è impossibile per costruzione avere
   opzione (2) e (3) insieme. Il noleggio (1) è una relazione opzionale indipendente.
-- **Prezzi**: le tariffe vivono in `PriceListEntry` (attrezzatura) e `ServiceFee` (furgone);
-  ogni noleggio/partecipazione salva uno snapshot degli importi applicati, così modificare
-  il listino non altera lo storico.
+- **Listino noleggi**: voci `RentalOption` a prezzo **giornaliero**, uguale per tutti, ognuna
+  con le categorie che comprende. Listino attuale (creato dal seed anche in produzione):
+  Pacchetto Kayak 15 €/giorno (kayak, pagaia, paraspruzzi, salvagente, casco gratis),
+  Giacca d'acqua 5 €, Muta 5 €; il kit completo è la somma (25 €). Un noleggio paga ogni voce
+  di cui contiene almeno un pezzo, moltiplicata per i giorni. Una categoria sta in una sola
+  voce, per non addebitare due volte lo stesso pezzo. Le voci addebitate vengono copiate in
+  `RentalCharge` (nome, prezzo, giorni), così modificare il listino non altera lo storico.
+- **Servizi furgone** (`ServiceFee`, trasporto e quota posto): modello presente ma non ancora
+  gestito, rimandato.
 - **Spese vive**: `Outing.fuelCost + tollCost` ripartite tra i partecipanti con `travelMode = VAN`.
 - **Doppie prenotazioni**: Prisma non esprime vincoli di esclusione su intervalli; la verifica
   di sovrapposizione andrà fatta nel service di prenotazione dentro una transazione.

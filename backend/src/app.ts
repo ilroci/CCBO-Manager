@@ -5,6 +5,7 @@ import { env } from "./config/env";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { authRouter } from "./routes/auth.routes";
 import { equipmentRouter } from "./routes/equipment.routes";
+import { priceListRouter } from "./routes/price-list.routes";
 import { usersRouter } from "./routes/users.routes";
 
 // Messaggi di validazione in italiano
@@ -34,7 +35,8 @@ export function createApp() {
   app.use("/api/auth", authRouter);
   app.use("/api/users", usersRouter);
   app.use("/api/equipment", equipmentRouter);
-  // Prossimi router: /api/price-list, /api/rentals, /api/outings ...
+  app.use("/api/price-list", priceListRouter);
+  // Prossimi router: /api/rentals, /api/outings ...
 
   app.use(notFoundHandler);
   app.use(errorHandler);

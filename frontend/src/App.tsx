@@ -6,6 +6,7 @@ import { CatalogPage } from "@/pages/CatalogPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
+import { PriceListPage } from "@/pages/PriceListPage";
 import { UsersPage } from "@/pages/UsersPage";
 
 /** Pagine già implementate; le altre voci di NAV_ITEMS mostrano un segnaposto. */
@@ -13,6 +14,7 @@ const PAGES: Record<string, React.ReactNode> = {
   "/": <DashboardPage />,
   "/catalog": <CatalogPage />,
   "/users": <UsersPage />,
+  "/price-list": <PriceListPage />,
 };
 
 export default function App() {

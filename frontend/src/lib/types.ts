@@ -20,7 +20,8 @@ export type EquipmentCategory =
   | "HELMET"
   | "WATER_JACKET"
   | "SPRAY_DECK"
-  | "WETSUIT";
+  | "WETSUIT"
+  | "LIFE_JACKET";
 
 export type ItemStatus = "AVAILABLE" | "RENTED";
 
@@ -36,5 +37,17 @@ export interface EquipmentItem {
   status: ItemStatus;
   isArchived: boolean;
   createdAt: string;
+  updatedAt: string;
+}
+
+/** Voce del listino noleggi, a prezzo giornaliero. */
+export interface RentalOption {
+  id: string;
+  name: string;
+  description: string | null;
+  categories: EquipmentCategory[];
+  /** Importo con due decimali, es. "15.00" */
+  dailyPrice: string;
+  sortOrder: number;
   updatedAt: string;
 }

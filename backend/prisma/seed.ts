@@ -1,6 +1,7 @@
 /**
- * Crea un utente per ruolo e un inventario di esempio, così si può usare subito l'app.
- * Idempotente: utenti e pezzi già presenti (stessa email / numero di serie) non vengono modificati.
+ * Crea un utente per ruolo, il listino del club e un inventario di esempio.
+ * Idempotente: utenti, voci di listino e pezzi già presenti (stessa email / nome / numero di serie)
+ * non vengono modificati.
  *
  *   npm run seed                       → password "canoa1234"
  *   SEED_PASSWORD="..." npm run seed   → password scelta (consigliato fuori dal locale)
@@ -17,7 +18,20 @@ const users = [
   { email: "socio@canoaclub.local", firstName: "Sara", lastName: "Socia", role: Role.MEMBER },
 ];
 
-const { CANOE, PADDLE, HELMET, WATER_JACKET, SPRAY_DECK, WETSUIT } = EquipmentCategory;
+const { CANOE, PADDLE, HELMET, WATER_JACKET, SPRAY_DECK, WETSUIT, LIFE_JACKET } = EquipmentCategory;
+
+/** Listino reale del club (prezzi al giorno): creato anche in produzione. */
+const rentalOptions = [
+  {
+    name: "Pacchetto Kayak",
+    description: "Kayak, pagaia, paraspruzzi e salvagente. Casco compreso.",
+    categories: [CANOE, PADDLE, SPRAY_DECK, LIFE_JACKET, HELMET],
+    dailyPrice: "15",
+    sortOrder: 1,
+  },
+  { name: "Giacca d'acqua", description: null, categories: [WATER_JACKET], dailyPrice: "5", sortOrder: 2 },
+  { name: "Muta", description: null, categories: [WETSUIT], dailyPrice: "5", sortOrder: 3 },
+];
 
 const equipment = [
   { category: CANOE, brand: "Dagger", model: "Mamba 8.1", size: "300 L", serialNumber: "CAN-0001", description: "Canoa da fiume, creek" },
@@ -41,6 +55,9 @@ const equipment = [
   { category: WETSUIT, brand: "Prijon", model: "Long John 3 mm", size: "M", serialNumber: "MUT-0001" },
   { category: WETSUIT, brand: "Prijon", model: "Long John 3 mm", size: "L", serialNumber: "MUT-0002" },
   { category: WETSUIT, brand: "Hiko", model: "Neoprene 4 mm", size: "S", serialNumber: "MUT-0003" },
+  { category: LIFE_JACKET, brand: "Palm", model: "FXr", size: "M/L", serialNumber: "SAL-0001", description: "Salvagente da fiume" },
+  { category: LIFE_JACKET, brand: "Palm", model: "FXr", size: "S/M", serialNumber: "SAL-0002", description: "Salvagente da fiume" },
+  { category: LIFE_JACKET, brand: "Peak UK", model: "Explorer Zip", size: "L/XL", serialNumber: "SAL-0003" },
 ];
 
 async function main() {
@@ -54,6 +71,11 @@ async function main() {
     });
     console.log(`✓ ${user.role.padEnd(10)} ${user.email}`);
   }
+
+  for (const option of rentalOptions) {
+    await prisma.rentalOption.upsert({ where: { name: option.name }, update: {}, create: option });
+  }
+  console.log(`✓ listino: ${rentalOptions.map((o) => o.name).join(", ")}`);
 
   if (process.env.SEED_DEMO_DATA === "false") return;
 

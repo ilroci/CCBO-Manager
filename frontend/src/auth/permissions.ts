@@ -66,7 +66,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     to: "/price-list",
     label: "Listino prezzi",
-    description: "Tariffe di noleggio e servizi furgone",
+    description: "Prezzi giornalieri di noleggio",
     icon: Receipt,
     roles: ["ADMIN"],
   },

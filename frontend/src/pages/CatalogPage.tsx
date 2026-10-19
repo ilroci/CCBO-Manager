@@ -15,6 +15,7 @@ import { useCurrentUser } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EquipmentFormDialog, type EquipmentEditing } from "@/components/EquipmentFormDialog";
 import { FormError } from "@/components/FormError";
+import { PriceSummary } from "@/components/PriceSummary";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -123,6 +124,8 @@ export function CatalogPage() {
           </Button>
         )}
       </div>
+
+      <PriceSummary />
 
       <div className="grid gap-3">
         <div className="flex flex-wrap items-center gap-2">

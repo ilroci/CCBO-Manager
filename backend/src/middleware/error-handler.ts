@@ -7,6 +7,7 @@ import { HttpError } from "../lib/http-error";
 const UNIQUE_FIELD_LABELS: Record<string, string> = {
   email: "email",
   serialNumber: "numero di serie",
+  name: "nome",
 };
 
 function isBodyParserError(err: unknown): err is { status: number } {

@@ -32,19 +32,13 @@ enum EquipmentCategory {
   WATER_JACKET // Giacche d'acqua
   SPRAY_DECK   // Paraspruzzi
   WETSUIT      // Mute
+  LIFE_JACKET  // Salvagenti
 }
 
 /// Stato attuale del singolo pezzo
 enum ItemStatus {
   AVAILABLE // Disponibile
   RENTED    // In Noleggio
-}
-
-/// Unità di tariffazione del listino attrezzatura
-enum PricingUnit {
-  HOURLY     // tariffa oraria
-  DAILY      // tariffa giornaliera
-  PER_OUTING // tariffa forfettaria per singola uscita
 }
 
 /// Servizi legati al furgone (voci di listino non attrezzatura)
@@ -106,7 +100,7 @@ model User {
   outingsLed          Outing[]            @relation("OutingInstructor")
   participations      OutingParticipant[]
   paymentsConfirmed   OutingParticipant[] @relation("PaymentConfirmedBy")
-  priceListUpdates    PriceListEntry[]
+  rentalOptionUpdates RentalOption[]
   serviceFeeUpdates   ServiceFee[]
 
   @@index([role])
@@ -154,22 +148,25 @@ model EquipmentPhoto {
 // LISTINO PREZZI (gestito dall'Amministratore)
 // ---------------------------------------------------------------------
 
-/// Tariffa noleggio per categoria e unità (es. CANOE / DAILY = 15,00 €).
-/// Lo storico è mantenuto con validFrom/validTo: i noleggi salvano
-/// comunque una copia del prezzo applicato (snapshot).
-model PriceListEntry {
-  id          String            @id @default(cuid())
-  category    EquipmentCategory
-  unit        PricingUnit
-  amount      Decimal           @db.Decimal(10, 2)
-  validFrom   DateTime          @default(now())
-  validTo     DateTime?
+/// Voce del listino noleggi, a prezzo giornaliero uguale per tutti.
+/// Es. "Pacchetto Kayak" = CANOE + PADDLE + SPRAY_DECK + LIFE_JACKET + HELMET → 15 €/giorno.
+/// Una categoria appartiene al massimo a una voce (verificato dall'API): un noleggio paga
+/// ogni voce di cui contiene almeno un pezzo, per il numero di giorni.
+/// I noleggi copiano nome e prezzo in RentalCharge, quindi modificare il listino non altera lo storico.
+model RentalOption {
+  id          String              @id @default(cuid())
+  name        String              @unique
+  description String?
+  categories  EquipmentCategory[]
+  dailyPrice  Decimal             @db.Decimal(10, 2)
+  /// Ordine di visualizzazione nel listino
+  sortOrder   Int                 @default(0)
   updatedById String?
-  updatedBy   User?             @relation(fields: [updatedById], references: [id], onDelete: SetNull)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  updatedBy   User?               @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
-  @@index([category, unit, validFrom])
+  charges RentalCharge[]
 }
 
 /// Tariffe dei servizi furgone (trasporto attrezzatura, quota posto).
@@ -202,9 +199,7 @@ model Rental {
   member    User         @relation("RentalMember", fields: [memberId], references: [id])
   startAt   DateTime
   endAt     DateTime
-  /// Unità di tariffazione usata per il calcolo (per OUTING tipicamente PER_OUTING)
-  unit      PricingUnit
-  /// Totale calcolato (somma delle righe), congelato alla conferma
+  /// Totale calcolato (somma delle voci addebitate), congelato alla conferma
   total     Decimal      @default(0) @db.Decimal(10, 2)
   notes     String?
 
@@ -213,6 +208,7 @@ model Rental {
   participant   OutingParticipant? @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
   items     RentalItem[]
+  charges   RentalCharge[]
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -220,22 +216,35 @@ model Rental {
   @@index([status])
 }
 
-/// Singolo pezzo all'interno di un noleggio, con prezzo applicato e rientro.
+/// Singolo pezzo assegnato a un noleggio, con il suo rientro.
+/// Il prezzo non è per pezzo ma per voce di listino: vedi RentalCharge.
 model RentalItem {
   id         String        @id @default(cuid())
   rentalId   String
   rental     Rental        @relation(fields: [rentalId], references: [id], onDelete: Cascade)
   itemId     String
   item       EquipmentItem @relation(fields: [itemId], references: [id])
-  /// Snapshot della tariffa al momento della prenotazione
-  unitPrice  Decimal       @db.Decimal(10, 2)
-  quantity   Decimal       @default(1) @db.Decimal(6, 2) // ore/giorni/uscite
-  lineTotal  Decimal       @db.Decimal(10, 2)
   returnedAt DateTime?
   returnNote String?       // es. danni riscontrati al rientro
 
   @@unique([rentalId, itemId])
   @@index([itemId])
+}
+
+/// Voce di listino addebitata in un noleggio (es. "Pacchetto Kayak · 2 giorni · 30 €").
+/// Nome e prezzo sono copiati al momento del calcolo, così restano anche se il listino cambia.
+model RentalCharge {
+  id         String        @id @default(cuid())
+  rentalId   String
+  rental     Rental        @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  optionId   String?
+  option     RentalOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+  name       String
+  dailyPrice Decimal       @db.Decimal(10, 2)
+  days       Int
+  amount     Decimal       @db.Decimal(10, 2)
+
+  @@index([rentalId])
 }
 
 // ---------------------------------------------------------------------
