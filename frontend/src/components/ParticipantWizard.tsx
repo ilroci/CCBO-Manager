@@ -55,7 +55,7 @@ export function ParticipantWizard({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [travelMode, setTravelMode] = useState<TravelMode>();
   const [quote, setQuote] = useState<ParticipantQuote>();
-  const { transportFee } = usePriceList();
+  const { vanSeatFee, transportFee } = usePriceList();
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
 
@@ -310,6 +310,9 @@ export function ParticipantWizard({
                       {mode.letter}) {mode.label}
                     </span>
                     <span className="block text-sm text-muted-foreground">{mode.description}</span>
+                    {mode.value === "VAN" && vanSeatFee && (
+                      <span className="block text-xs font-medium">Quota furgone {formatEuro(vanSeatFee)} per uscita</span>
+                    )}
                     {mode.value === "TRANSPORT_ONLY" && transportFee && (
                       <span className="block text-xs font-medium">{formatEuro(transportFee)} per uscita</span>
                     )}
@@ -323,8 +326,8 @@ export function ParticipantWizard({
               );
             })}
             <p className="text-xs text-muted-foreground">
-              Quota furgone e spese vive non sono ancora a listino: per ora l'opzione A viene registrata senza
-              costi.
+              La ripartizione delle spese vive (carburante e caselli) tra chi viaggia sul furgone non è ancora
+              definita: per ora l'opzione A addebita solo la quota furgone.
             </p>
           </div>
         )}
@@ -376,12 +379,24 @@ export function ParticipantWizard({
                       <span className="tabular-nums">{formatEuro(0)}</span>
                     </div>
                   )}
-                  <div
-                    className={cn("flex justify-between gap-2", Number(quote.transportAmount) === 0 && "text-muted-foreground")}
-                  >
-                    <span>{travelMode === "VAN" ? "Quota furgone e spese vive" : "Trasporto attrezzatura"}</span>
-                    <span className="tabular-nums">{formatEuro(quote.transportAmount)}</span>
-                  </div>
+                  {travelMode === "VAN" && (
+                    <div className="flex justify-between gap-2">
+                      <span>Quota furgone</span>
+                      <span className="tabular-nums">{formatEuro(quote.vanSeatAmount)}</span>
+                    </div>
+                  )}
+                  {travelMode === "TRANSPORT_ONLY" && (
+                    <div className="flex justify-between gap-2">
+                      <span>Trasporto attrezzatura</span>
+                      <span className="tabular-nums">{formatEuro(quote.transportAmount)}</span>
+                    </div>
+                  )}
+                  {travelMode === "AUTONOMOUS" && (
+                    <div className="flex justify-between gap-2 text-muted-foreground">
+                      <span>Furgone</span>
+                      <span className="tabular-nums">{formatEuro(0)}</span>
+                    </div>
+                  )}
                   <div className="mt-1 flex justify-between gap-2 border-t pt-2 text-base font-semibold">
                     <span>Quota individuale</span>
                     <span className="tabular-nums">{formatEuro(quote.totalAmount)}</span>

@@ -271,6 +271,7 @@ export function OutingDetailPage() {
                     <div className="text-xs text-muted-foreground">
                       {[
                         ...(p.rental?.charges.map((c) => `${c.name} ${formatEuro(c.dailyPrice)} × ${c.days}`) ?? []),
+                        ...(Number(p.vanSeatAmount) > 0 ? [`Quota furgone ${formatEuro(p.vanSeatAmount)}`] : []),
                         ...(Number(p.transportAmount) > 0 ? [`Trasporto attrezzatura ${formatEuro(p.transportAmount)}`] : []),
                       ].join(" · ")}
                       {paid && p.paidConfirmedBy && (

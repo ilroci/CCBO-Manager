@@ -92,13 +92,11 @@ async function main() {
   }
   console.log(`✓ listino: ${rentalOptions.map((o) => o.name).join(", ")}`);
 
-  // Uscite: solo trasporto attrezzatura (opzione B), 5 € per uscita.
-  await prisma.serviceFee.upsert({
-    where: { type: ServiceType.EQUIPMENT_TRANSPORT },
-    update: {},
-    create: { type: ServiceType.EQUIPMENT_TRANSPORT, amount: "5" },
-  });
-  console.log("✓ trasporto attrezzatura nelle uscite: 5 €");
+  // Uscite, tariffe fisse per uscita: quota furgone (opzione A) e solo trasporto attrezzatura (B).
+  for (const type of [ServiceType.VAN_SEAT, ServiceType.EQUIPMENT_TRANSPORT]) {
+    await prisma.serviceFee.upsert({ where: { type }, update: {}, create: { type, amount: "5" } });
+  }
+  console.log("✓ uscite: quota furgone 5 €, trasporto attrezzatura 5 €");
 
   if (process.env.SEED_DEMO_DATA === "false") return;
 

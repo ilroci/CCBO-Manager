@@ -132,7 +132,7 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `DELETE` | `/api/equipment/:id` | Admin, solo pezzi senza storico noleggi |
 | `GET` | `/api/price-list` | autenticato |
 | `POST` · `PATCH /:id` · `DELETE /:id` | `/api/price-list` | Admin |
-| `PUT` | `/api/price-list/service-fees/:type` | Admin (tariffa trasporto) |
+| `PUT` | `/api/price-list/service-fees/:type` | Admin (quota furgone, trasporto) |
 | `GET` | `/api/rentals/availability?start=&end=` | autenticato |
 | `POST` | `/api/rentals/quote` | autenticato (anteprima costo) |
 | `POST` | `/api/rentals` | autenticato (prenota per sé) |
@@ -202,8 +202,8 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   di cui contiene almeno un pezzo, moltiplicata per i giorni. Una categoria sta in una sola
   voce, per non addebitare due volte lo stesso pezzo. Le voci addebitate vengono copiate in
   `RentalCharge` (nome, prezzo, giorni), così modificare il listino non altera lo storico.
-- **Servizi furgone** (`ServiceFee`, una tariffa per tipo): in uso il trasporto attrezzatura;
-  la quota posto sul furgone è rimandata.
+- **Servizi furgone** (`ServiceFee`, una tariffa per tipo): quota furgone e trasporto
+  attrezzatura, 5 € ciascuno per uscita.
 - **Uscite**: Pianificata → In corso ("Partenza": tutto il materiale risulta consegnato) →
   Conclusa (rientro per singolo socio o di tutti alla chiusura); una pianificata si può
   annullare. I partecipanti si aggiungono col wizard: socio → noleggio (facoltativo, pezzi
@@ -214,11 +214,13 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   furgone, i partecipanti "A bordo" non possono superarli. Un incasso confermato blocca le
   modifiche alla quota finché non viene annullato. Qualunque istruttore può gestire
   qualunque uscita.
-- **Quota individuale** = noleggio (voci × giorni dell'uscita) + **solo trasporto attrezzatura**
-  (opzione B, `ServiceFee` EQUIPMENT_TRANSPORT, 5 € fissi per uscita, modificabile dall'admin
-  nel Listino). Quota furgone e spese vive (opzione A) sono registrate ma valgono 0 €: i campi
-  esistono già (`vanSeatAmount`, `expensesShare`, `Outing.fuelCost/tollCost`). Ogni partecipante
-  conserva gli importi applicati; cambiano solo se lo si modifica.
+- **Quota individuale** = noleggio (voci × giorni dell'uscita) + servizio furgone, a tariffa
+  fissa per uscita modificabile dall'admin nel Listino (`ServiceFee`):
+  A) a bordo → **quota furgone 5 €** (VAN_SEAT); B) solo trasporto attrezzatura → **5 €**
+  (EQUIPMENT_TRANSPORT); C) autonomo → 0 €. La quota delle **spese vive** (carburante e caselli,
+  `expensesShare`, `Outing.fuelCost/tollCost`) è predisposta ma vale 0 € finché non ne viene
+  definito il criterio di ripartizione. Ogni partecipante conserva gli importi applicati;
+  cambiano solo se lo si modifica.
 - **Prenotazioni**: date di calendario inclusive (`@db.Date`): dal sabato alla domenica = 2
   giorni; prenotabili da oggi (ora italiana), per al massimo 30 giorni. Ciclo di vita:
   Prenotato → Ritirato (pezzi "In noleggio") → Rientrato (pezzi "Disponibile"), oppure

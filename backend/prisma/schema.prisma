@@ -170,7 +170,7 @@ model RentalOption {
 }
 
 /// Tariffe dei servizi furgone nelle uscite, una per tipo, a importo fisso per uscita.
-/// Oggi è usata solo EQUIPMENT_TRANSPORT (opzione B, 5 €); VAN_SEAT è rimandata.
+/// VAN_SEAT = quota furgone (opzione A, 5 €), EQUIPMENT_TRANSPORT = solo trasporto (opzione B, 5 €).
 /// Ogni partecipante copia l'importo applicato (transportAmount / vanSeatAmount),
 /// quindi modificare la tariffa non altera le quote già calcolate.
 model ServiceFee {

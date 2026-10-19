@@ -26,10 +26,11 @@ export function usePriceList() {
     void reload();
   }, [reload]);
 
-  /** Tariffa del solo trasporto attrezzatura nelle uscite (opzione B). */
+  /** Tariffe fisse per uscita: quota furgone (opzione A) e solo trasporto attrezzatura (opzione B). */
+  const vanSeatFee = serviceFees.find((fee) => fee.type === "VAN_SEAT")?.amount;
   const transportFee = serviceFees.find((fee) => fee.type === "EQUIPMENT_TRANSPORT")?.amount;
 
-  return { options, serviceFees, transportFee, loading, error, reload };
+  return { options, serviceFees, vanSeatFee, transportFee, loading, error, reload };
 }
 
 /** Prezzo giornaliero di tutte le voci insieme ("kit completo"). */

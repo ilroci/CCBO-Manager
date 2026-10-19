@@ -1,14 +1,29 @@
 import { useState, type FormEvent } from "react";
-import { Bus, Pencil } from "lucide-react";
+import { Pencil, type LucideIcon } from "lucide-react";
 import { FormError } from "@/components/FormError";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatEuro } from "@/lib/money";
+import type { ServiceFee } from "@/lib/types";
 
-/** Tariffa del solo trasporto attrezzatura nelle uscite (opzione B), modificabile sul posto. */
-export function TransportFeeCard({ amount, onSaved }: { amount: string | undefined; onSaved: () => void }) {
+/** Tariffa fissa per uscita di un servizio furgone, modificabile sul posto. */
+export function ServiceFeeCard({
+  type,
+  title,
+  description,
+  icon: Icon,
+  amount,
+  onSaved,
+}: {
+  type: ServiceFee["type"];
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  amount: string | undefined;
+  onSaved: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
@@ -19,7 +34,7 @@ export function TransportFeeCard({ amount, onSaved }: { amount: string | undefin
     setSaving(true);
     setError(undefined);
     try {
-      await api.put("/api/price-list/service-fees/EQUIPMENT_TRANSPORT", { amount: value });
+      await api.put(`/api/price-list/service-fees/${type}`, { amount: value });
       setEditing(false);
       onSaved();
     } catch (err) {
@@ -33,11 +48,9 @@ export function TransportFeeCard({ amount, onSaved }: { amount: string | undefin
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Bus className="size-4 text-primary" /> Solo trasporto attrezzatura
+          <Icon className="size-4 text-primary" /> {title}
         </CardTitle>
-        <CardDescription>
-          Opzione B delle uscite: il socio viaggia con mezzo proprio e fa caricare l'attrezzatura sul furgone.
-        </CardDescription>
+        <CardDescription>{description}</CardDescription>
         {!editing && (
           <CardAction>
             <Button variant="ghost" size="icon" title="Modifica" onClick={() => setEditing(true)}>

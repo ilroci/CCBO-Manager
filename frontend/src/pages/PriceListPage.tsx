@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { CircleAlert, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Bus, CircleAlert, Loader2, Package, Pencil, Plus, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FormError } from "@/components/FormError";
-import { TransportFeeCard } from "@/components/TransportFeeCard";
+import { ServiceFeeCard } from "@/components/ServiceFeeCard";
 import {
   RentalOptionFormDialog,
   type RentalOptionEditing,
@@ -17,7 +17,7 @@ import { fullKitPrice, usePriceList } from "@/lib/price-list";
 import type { RentalOption } from "@/lib/types";
 
 export function PriceListPage() {
-  const { options, transportFee, loading, error, reload } = usePriceList();
+  const { options, vanSeatFee, transportFee, loading, error, reload } = usePriceList();
   const [editing, setEditing] = useState<RentalOptionEditing>(undefined);
   const [deleting, setDeleting] = useState<RentalOption>();
 
@@ -101,7 +101,22 @@ export function PriceListPage() {
 
           <h2 className="mt-2 text-lg font-semibold">Servizi delle uscite</h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <TransportFeeCard amount={transportFee} onSaved={() => void reload()} />
+            <ServiceFeeCard
+              type="VAN_SEAT"
+              title="Quota furgone"
+              description="Opzione A: il socio viaggia a bordo del furgone. Le spese vive (carburante e caselli) si aggiungeranno a parte."
+              icon={Bus}
+              amount={vanSeatFee}
+              onSaved={() => void reload()}
+            />
+            <ServiceFeeCard
+              type="EQUIPMENT_TRANSPORT"
+              title="Solo trasporto attrezzatura"
+              description="Opzione B: il socio viaggia con mezzo proprio e fa caricare l'attrezzatura sul furgone."
+              icon={Package}
+              amount={transportFee}
+              onSaved={() => void reload()}
+            />
           </div>
 
           <p className="text-sm text-muted-foreground">

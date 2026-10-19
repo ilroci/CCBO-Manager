@@ -8,10 +8,16 @@ type Db = Prisma.TransactionClient;
 
 const ZERO = new Prisma.Decimal(0);
 
-/** Tariffa del servizio furgone per la modalità di viaggio (oggi solo B → trasporto attrezzatura). */
-export async function transportFee(db: Db, travelMode: TravelMode): Promise<Prisma.Decimal> {
-  if (travelMode !== TravelMode.TRANSPORT_ONLY) return ZERO;
-  const fee = await db.serviceFee.findUnique({ where: { type: ServiceType.EQUIPMENT_TRANSPORT } });
+/** Servizio furgone addebitato per ciascuna modalità di viaggio (C, autonomo, non paga nulla). */
+const FEE_BY_TRAVEL_MODE: Partial<Record<TravelMode, ServiceType>> = {
+  [TravelMode.VAN]: ServiceType.VAN_SEAT, // A) quota furgone
+  [TravelMode.TRANSPORT_ONLY]: ServiceType.EQUIPMENT_TRANSPORT, // B) solo trasporto attrezzatura
+};
+
+async function serviceFee(db: Db, travelMode: TravelMode): Promise<Prisma.Decimal> {
+  const type = FEE_BY_TRAVEL_MODE[travelMode];
+  if (!type) return ZERO;
+  const fee = await db.serviceFee.findUnique({ where: { type } });
   return fee?.amount ?? ZERO;
 }
 
@@ -19,7 +25,7 @@ export async function transportFee(db: Db, travelMode: TravelMode): Promise<Pris
  * Quota individuale di un partecipante, senza salvare nulla (riepilogo del wizard):
  * (1) noleggio = voci di listino × giorni dell'uscita;
  * (2) solo trasporto attrezzatura = tariffa fissa per uscita;
- * (3) quota furgone + spese vive = 0, rimandate.
+ * (3) quota furgone = tariffa fissa per uscita + quota spese vive (oggi 0: criterio da definire).
  */
 export async function quoteParticipant(
   db: Db,
@@ -29,14 +35,17 @@ export async function quoteParticipant(
 ) {
   const rental = itemIds.length > 0 ? await quoteRental(db, itemIds, outing.startDate, outing.endDate) : null;
   const rentalAmount = rental?.total ?? ZERO;
-  const transportAmount = await transportFee(db, travelMode);
+  const fee = await serviceFee(db, travelMode);
+  const transportAmount = travelMode === TravelMode.TRANSPORT_ONLY ? fee : ZERO;
+  const vanSeatAmount = travelMode === TravelMode.VAN ? fee : ZERO;
+  const expensesShare = ZERO;
   return {
     rental,
     rentalAmount,
     transportAmount,
-    vanSeatAmount: ZERO,
-    expensesShare: ZERO,
-    totalAmount: rentalAmount.add(transportAmount),
+    vanSeatAmount,
+    expensesShare,
+    totalAmount: rentalAmount.add(transportAmount).add(vanSeatAmount).add(expensesShare),
   };
 }
 
