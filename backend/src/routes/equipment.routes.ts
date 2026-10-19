@@ -2,8 +2,11 @@ import { EquipmentCategory, ItemStatus, Role, type Prisma } from "@prisma/client
 import { Router } from "express";
 import { z } from "zod";
 import { badRequest, HttpError, notFound } from "../lib/http-error";
-import { parsePhotoDataUrl, photoUrl } from "../lib/photo";
+import { parseDate, todayInItaly } from "../lib/dates";
+import { itemInclude, toItemDto } from "../lib/equipment";
+import { parsePhotoDataUrl } from "../lib/photo";
 import { prisma } from "../lib/prisma";
+import { BLOCKING_STATUSES } from "../lib/rentals";
 import { authenticate, authorize } from "../middleware/auth";
 
 export const equipmentRouter = Router();
@@ -26,16 +29,6 @@ equipmentRouter.get("/:id/photo", async (req, res) => {
 });
 
 equipmentRouter.use(authenticate);
-
-/** Le query includono solo la data della foto, mai i byte. */
-const itemInclude = { photo: { select: { updatedAt: true } } } satisfies Prisma.EquipmentItemInclude;
-
-type ItemWithPhoto = Prisma.EquipmentItemGetPayload<{ include: typeof itemInclude }>;
-
-/** Forma pubblica del pezzo: la foto diventa `photoUrl`. */
-function toDto({ photo, ...item }: ItemWithPhoto) {
-  return { ...item, photoUrl: photo ? photoUrl(item.id, photo.updatedAt) : null };
-}
 
 const listQuerySchema = z.object({
   category: z.enum(EquipmentCategory).optional(),
@@ -69,7 +62,7 @@ equipmentRouter.get("/", async (req, res) => {
     include: itemInclude,
     orderBy: [{ category: "asc" }, { brand: "asc" }, { model: "asc" }, { serialNumber: "asc" }],
   });
-  res.json({ items: items.map(toDto) });
+  res.json({ items: items.map(toItemDto) });
 });
 
 equipmentRouter.get("/:id", async (req, res) => {
@@ -77,7 +70,7 @@ equipmentRouter.get("/:id", async (req, res) => {
   const item = await prisma.equipmentItem.findUnique({ where: { id }, include: itemInclude });
   // I pezzi archiviati restano visibili solo all'amministratore.
   if (!item || (item.isArchived && req.user!.role !== Role.ADMIN)) throw notFound();
-  res.json({ item: toDto(item) });
+  res.json({ item: toItemDto(item) });
 });
 
 /** Testo opzionale: stringa vuota → null, così il form può "svuotare" un campo. */
@@ -114,7 +107,7 @@ equipmentRouter.post("/", authorize(Role.ADMIN), async (req, res) => {
     data: { ...data, photo: photo ? { create: parsePhotoDataUrl(photo) } : undefined },
     include: itemInclude,
   });
-  res.status(201).json({ item: toDto(item) });
+  res.status(201).json({ item: toItemDto(item) });
 });
 
 equipmentRouter.patch("/:id", authorize(Role.ADMIN), async (req, res) => {
@@ -126,6 +119,13 @@ equipmentRouter.patch("/:id", authorize(Role.ADMIN), async (req, res) => {
     if (current.status === ItemStatus.RENTED) {
       throw badRequest("Non puoi archiviare un pezzo attualmente in noleggio");
     }
+    const upcoming = await prisma.rentalItem.count({
+      where: {
+        itemId: id,
+        rental: { status: { in: BLOCKING_STATUSES }, endDate: { gte: parseDate(todayInItaly()) } },
+      },
+    });
+    if (upcoming > 0) throw badRequest("Il pezzo ha prenotazioni in corso o future: annullale prima di archiviarlo");
   }
 
   const newPhoto = photo ? parsePhotoDataUrl(photo) : undefined;
@@ -141,7 +141,7 @@ equipmentRouter.patch("/:id", authorize(Role.ADMIN), async (req, res) => {
       include: itemInclude,
     });
   });
-  res.json({ item: toDto(item) });
+  res.json({ item: toItemDto(item) });
 });
 
 /**

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Archive,
+  CalendarPlus,
   ArchiveRestore,
   ImageOff,
   LayoutGrid,
@@ -15,6 +17,7 @@ import { useCurrentUser } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EquipmentFormDialog, type EquipmentEditing } from "@/components/EquipmentFormDialog";
 import { FormError } from "@/components/FormError";
+import { ItemThumbnail } from "@/components/ItemThumbnail";
 import { PriceSummary } from "@/components/PriceSummary";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -118,11 +121,18 @@ export function CatalogPage() {
             {isAdmin ? "Inventario dell'attrezzatura del club." : "Attrezzatura del club e disponibilità."}
           </p>
         </div>
-        {isAdmin && (
-          <Button onClick={() => setEditing(null)}>
-            <Plus /> Nuovo pezzo
+        <div className="flex gap-2">
+          <Button variant={isAdmin ? "outline" : "default"} asChild>
+            <Link to="/my-rentals/new">
+              <CalendarPlus /> Prenota
+            </Link>
           </Button>
-        )}
+          {isAdmin && (
+            <Button onClick={() => setEditing(null)}>
+              <Plus /> Nuovo pezzo
+            </Button>
+          )}
+        </div>
       </div>
 
       <PriceSummary />
@@ -236,7 +246,7 @@ export function CatalogPage() {
                   {visible.map((item) => (
                     <TableRow key={item.id} className={item.isArchived ? "opacity-60" : undefined}>
                       <TableCell>
-                        <Thumbnail item={item} />
+                        <ItemThumbnail item={item} />
                       </TableCell>
                       <TableCell className="font-mono text-xs">{item.serialNumber}</TableCell>
                       <TableCell>{CATEGORY_LABELS[item.category]}</TableCell>
@@ -346,26 +356,6 @@ function Count({ n }: { n: number }) {
   return <span className="text-xs tabular-nums opacity-70">{n}</span>;
 }
 
-/** Miniatura per la vista tabella. */
-function Thumbnail({ item }: { item: EquipmentItem }) {
-  const [failed, setFailed] = useState(false);
-  return (
-    <div className="flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted">
-      {item.photoUrl && !failed ? (
-        <img
-          src={apiUrl(item.photoUrl)}
-          alt=""
-          loading="lazy"
-          className="size-full object-cover"
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        <ImageOff className="size-4 text-muted-foreground/50" aria-hidden />
-      )}
-    </div>
-  );
-}
-
 function EquipmentCard({ item, onEdit }: { item: EquipmentItem; onEdit?: () => void }) {
   const [photoFailed, setPhotoFailed] = useState(false);
   const showPhoto = item.photoUrl && !photoFailed;
@@ -403,10 +393,18 @@ function EquipmentCard({ item, onEdit }: { item: EquipmentItem; onEdit?: () => v
         )}
         <div className="flex items-center justify-between">
           <span className="font-mono text-xs text-muted-foreground">{item.serialNumber}</span>
-          {onEdit && (
+          {onEdit ? (
             <Button variant="ghost" size="sm" onClick={onEdit}>
               <Pencil /> Modifica
             </Button>
+          ) : (
+            !item.isArchived && (
+              <Button variant="ghost" size="sm" asChild>
+                <Link to={`/my-rentals/new?item=${item.id}`}>
+                  <CalendarPlus /> Prenota
+                </Link>
+              </Button>
+            )
           )}
         </div>
       </div>

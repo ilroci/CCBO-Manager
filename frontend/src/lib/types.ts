@@ -51,3 +51,41 @@ export interface RentalOption {
   sortOrder: number;
   updatedAt: string;
 }
+
+export type RentalStatus = "RESERVED" | "ACTIVE" | "RETURNED" | "CANCELLED";
+
+/** Pezzo del catalogo con la disponibilità per l'intervallo richiesto. */
+export interface AvailableItem extends EquipmentItem {
+  available: boolean;
+}
+
+export interface RentalCharge {
+  id?: string;
+  optionId: string | null;
+  name: string;
+  dailyPrice: string;
+  days: number;
+  amount: string;
+}
+
+export interface RentalQuote {
+  days: number;
+  total: string;
+  charges: RentalCharge[];
+}
+
+export interface Rental {
+  id: string;
+  kind: "PERSONAL" | "OUTING";
+  status: RentalStatus;
+  member: Pick<User, "id" | "firstName" | "lastName" | "email">;
+  /** "YYYY-MM-DD", ultimo giorno incluso */
+  startDate: string;
+  endDate: string;
+  days: number;
+  total: string;
+  notes: string | null;
+  items: { id: string; returnedAt: string | null; item: EquipmentItem }[];
+  charges: RentalCharge[];
+  createdAt: string;
+}

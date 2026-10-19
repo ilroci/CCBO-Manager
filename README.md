@@ -49,6 +49,7 @@ Comandi utili:
 ```bash
 docker compose exec backend npx prisma migrate dev --name <nome>   # nuova migrazione dopo una modifica allo schema
 docker compose exec backend npm run typecheck
+docker compose exec backend npx tsx --test src/**/*.test.ts      # test (calcolo prezzi e giorni)
 docker compose down          # ferma tutto (i dati restano nel volume pgdata)
 docker compose down -v       # ferma e cancella anche il database
 ```
@@ -130,6 +131,13 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `DELETE` | `/api/equipment/:id` | Admin, solo pezzi senza storico noleggi |
 | `GET` | `/api/price-list` | autenticato |
 | `POST` · `PATCH /:id` · `DELETE /:id` | `/api/price-list` | Admin |
+| `GET` | `/api/rentals/availability?start=&end=` | autenticato |
+| `POST` | `/api/rentals/quote` | autenticato (anteprima costo) |
+| `POST` | `/api/rentals` | autenticato (prenota per sé) |
+| `GET` | `/api/rentals?scope=mine\|all&status=` | autenticato (`all` solo Admin/Istruttore) |
+| `GET` | `/api/rentals/:id` | proprietario, Admin, Istruttore |
+| `POST` | `/api/rentals/:id/cancel` | proprietario (se Prenotato), Admin, Istruttore |
+| `POST` | `/api/rentals/:id/pickup` · `/return` | Admin, Istruttore |
 
 Errori: `{ error, details? }` con 400 (validazione), 401, 403, 404, 409 (email o numero di
 serie già in uso, eliminazione di un pezzo con storico).
@@ -188,7 +196,15 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
 - **Servizi furgone** (`ServiceFee`, trasporto e quota posto): modello presente ma non ancora
   gestito, rimandato.
 - **Spese vive**: `Outing.fuelCost + tollCost` ripartite tra i partecipanti con `travelMode = VAN`.
-- **Doppie prenotazioni**: Prisma non esprime vincoli di esclusione su intervalli; la verifica
-  di sovrapposizione andrà fatta nel service di prenotazione dentro una transazione.
+- **Prenotazioni**: date di calendario inclusive (`@db.Date`): dal sabato alla domenica = 2
+  giorni; prenotabili da oggi (ora italiana), per al massimo 30 giorni. Ciclo di vita:
+  Prenotato → Ritirato (pezzi "In noleggio") → Rientrato (pezzi "Disponibile"), oppure
+  Annullato. Consegna e rientro li registrano Admin e Istruttori; il socio può annullare
+  finché non ha ritirato. Il costo si calcola alla prenotazione e resta fissato.
+- **Doppie prenotazioni**: Prisma non esprime vincoli di esclusione su intervalli. La
+  prenotazione blocca le righe dei pezzi (`SELECT ... FOR UPDATE`) dentro una transazione e
+  solo dopo verifica le sovrapposizioni: prenotazioni simultanee degli stessi pezzi vengono
+  serializzate e solo la prima riesce (409 per le altre). Un pezzo con prenotazioni in
+  corso o future non si può archiviare.
 - **Login**: non c'è ancora un limite ai tentativi (rate limiting); da aggiungere prima
   della messa in produzione.

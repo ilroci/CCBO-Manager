@@ -188,17 +188,21 @@ model ServiceFee {
 // NOLEGGI (personali e di uscita)
 // ---------------------------------------------------------------------
 
-/// Un noleggio raggruppa uno o più pezzi per un socio in un intervallo.
+/// Un noleggio raggruppa uno o più pezzi per un socio in un intervallo di giorni.
 /// - PERSONAL: creato dal socio (prenotazione autonoma)
 /// - OUTING:   creato dall'istruttore nel Passo 1 del wizard
+/// I giorni sono di calendario e inclusivi: dal 4 al 5 = 2 giorni.
+/// Un pezzo non può stare in due noleggi RESERVED/ACTIVE con giorni sovrapposti
+/// (verificato dall'API dentro una transazione con lock sui pezzi).
 model Rental {
   id        String       @id @default(cuid())
   kind      RentalKind
   status    RentalStatus @default(RESERVED)
   memberId  String
   member    User         @relation("RentalMember", fields: [memberId], references: [id])
-  startAt   DateTime
-  endAt     DateTime
+  startDate DateTime     @db.Date
+  /// Ultimo giorno di noleggio (incluso)
+  endDate   DateTime     @db.Date
   /// Totale calcolato (somma delle voci addebitate), congelato alla conferma
   total     Decimal      @default(0) @db.Decimal(10, 2)
   notes     String?
@@ -212,8 +216,8 @@ model Rental {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  @@index([memberId, startAt])
-  @@index([status])
+  @@index([memberId, startDate])
+  @@index([status, startDate, endDate])
 }
 
 /// Singolo pezzo assegnato a un noleggio, con il suo rientro.
