@@ -17,6 +17,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  confirmVariant = "destructive",
   onConfirm,
   onClose,
 }: {
@@ -24,6 +25,8 @@ export function ConfirmDialog({
   title: string;
   description: React.ReactNode;
   confirmLabel: string;
+  /** Rosso per le azioni distruttive, primario per le conferme di flusso. */
+  confirmVariant?: "destructive" | "default";
   onConfirm: () => Promise<void>;
   onClose: () => void;
 }) {
@@ -62,7 +65,7 @@ export function ConfirmDialog({
           <Button variant="outline" onClick={onClose}>
             Annulla
           </Button>
-          <Button variant="destructive" onClick={handleConfirm} disabled={busy}>
+          <Button variant={confirmVariant} onClick={handleConfirm} disabled={busy}>
             {confirmLabel}
           </Button>
         </DialogFooter>

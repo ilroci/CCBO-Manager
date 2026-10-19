@@ -53,11 +53,17 @@ export async function quoteRental(db: Db, itemIds: string[], start: Date, end: D
  * verifica che siano liberi. Due prenotazioni concorrenti sugli stessi pezzi vengono così
  * serializzate: la seconda vede la prima e fallisce con 409.
  */
-export async function lockAndAssertAvailable(db: Db, itemIds: string[], start: Date, end: Date) {
+export async function lockAndAssertAvailable(
+  db: Db,
+  itemIds: string[],
+  start: Date,
+  end: Date,
+  excludeRentalId?: string,
+) {
   const sorted = [...itemIds].sort(); // ordine fisso per evitare deadlock
   await db.$queryRaw`SELECT id FROM "EquipmentItem" WHERE id IN (${Prisma.join(sorted)}) ORDER BY id FOR UPDATE`;
 
-  const busy = await findBusyItemIds(db, itemIds, start, end);
+  const busy = await findBusyItemIds(db, itemIds, start, end, excludeRentalId);
   if (busy.size > 0) {
     const taken = await db.equipmentItem.findMany({ where: { id: { in: [...busy] } }, select: { serialNumber: true } });
     throw new HttpError(

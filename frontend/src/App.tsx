@@ -6,6 +6,8 @@ import { CatalogPage } from "@/pages/CatalogPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { MyRentalsPage } from "@/pages/MyRentalsPage";
+import { OutingDetailPage } from "@/pages/OutingDetailPage";
+import { OutingsPage } from "@/pages/OutingsPage";
 import { NewRentalPage } from "@/pages/NewRentalPage";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
 import { PriceListPage } from "@/pages/PriceListPage";
@@ -16,6 +18,7 @@ const PAGES: Record<string, React.ReactNode> = {
   "/": <DashboardPage />,
   "/catalog": <CatalogPage />,
   "/my-rentals": <MyRentalsPage />,
+  "/outings": <OutingsPage />,
   "/users": <UsersPage />,
   "/price-list": <PriceListPage />,
 };
@@ -44,6 +47,14 @@ export default function App() {
         ))}
         {/* Sotto-pagina di "I miei noleggi": stessi ruoli */}
         <Route path="/my-rentals/new" element={<NewRentalPage />} />
+        <Route
+          path="/outings/:id"
+          element={
+            <RequireRole roles={["ADMIN", "INSTRUCTOR"]}>
+              <OutingDetailPage />
+            </RequireRole>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

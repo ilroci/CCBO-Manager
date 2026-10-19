@@ -255,19 +255,23 @@ model RentalCharge {
 // USCITE DI CLUB
 // ---------------------------------------------------------------------
 
+/// Uscita di club. Giorni di calendario inclusivi, come i noleggi: i noleggi dei
+/// partecipanti (kind = OUTING) hanno le stesse date dell'uscita.
 model Outing {
   id           String       @id @default(cuid())
   title        String
   destination  String?
-  startAt      DateTime
-  endAt        DateTime
+  startDate    DateTime     @db.Date
+  /// Ultimo giorno dell'uscita (incluso)
+  endDate      DateTime     @db.Date
   status       OutingStatus @default(PLANNED)
   instructorId String
   instructor   User         @relation("OutingInstructor", fields: [instructorId], references: [id])
 
   /// Posti disponibili sul furgone (null = nessun furgone)
   vanSeats     Int?
-  /// Spese vive effettive da ripartire tra chi è a bordo (TravelMode.VAN)
+  /// Spese vive effettive da ripartire tra chi è a bordo (TravelMode.VAN).
+  /// Non ancora usate: quota furgone e spese vive sono rimandate.
   fuelCost     Decimal      @default(0) @db.Decimal(10, 2)
   tollCost     Decimal      @default(0) @db.Decimal(10, 2)
 
@@ -276,7 +280,7 @@ model Outing {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  @@index([startAt])
+  @@index([startDate])
   @@index([instructorId])
 }
 

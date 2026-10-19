@@ -206,12 +206,12 @@ export function MyRentalsPage() {
                           <X /> Annulla
                         </Button>
                       )}
-                      {isStaff && rental.status === "RESERVED" && (
+                      {isStaff && rental.kind === "PERSONAL" && rental.status === "RESERVED" && (
                         <Button size="sm" disabled={busy} onClick={() => void runAction(rental, "pickup")}>
                           <PackageOpen /> Consegna
                         </Button>
                       )}
-                      {isStaff && rental.status === "ACTIVE" && (
+                      {isStaff && rental.kind === "PERSONAL" && rental.status === "ACTIVE" && (
                         <Button size="sm" disabled={busy} onClick={() => void runAction(rental, "return")}>
                           <PackageCheck /> Rientro
                         </Button>

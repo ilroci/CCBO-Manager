@@ -39,18 +39,20 @@ const itemIdsSchema = z
   .transform((ids) => [...new Set(ids)]);
 
 /**
- * GET /api/rentals/availability?start=&end= — pezzi non archiviati, con `available`
+ * GET /api/rentals/availability?start=&end=&excludeRentalId= — pezzi non archiviati, con `available`
  * per l'intervallo richiesto. Base della pagina di prenotazione.
  */
 rentalsRouter.get("/availability", async (req, res) => {
   const { start, end } = periodSchema.parse(req.query);
+  // Modifica di un noleggio esistente (es. partecipante di un'uscita): i suoi pezzi restano selezionabili.
+  const excludeRentalId = z.string().min(1).optional().parse(req.query.excludeRentalId);
   const [items, busy] = await Promise.all([
     prisma.equipmentItem.findMany({
       where: { isArchived: false },
       include: itemInclude,
       orderBy: [{ category: "asc" }, { brand: "asc" }, { model: "asc" }, { serialNumber: "asc" }],
     }),
-    findBusyItemIds(prisma, undefined, parseDate(start), parseDate(end)),
+    findBusyItemIds(prisma, undefined, parseDate(start), parseDate(end), excludeRentalId),
   ]);
   res.json({ items: items.map((item) => ({ ...toItemDto(item), available: !busy.has(item.id) })) });
 });
@@ -151,6 +153,11 @@ rentalsRouter.get("/:id", async (req, res) => {
   res.json({ rental: toRentalDto(await loadRental(req)) });
 });
 
+/** Consegna, rientro e annullamento dei noleggi di un'uscita passano dall'uscita stessa. */
+function assertPersonal(kind: RentalKind) {
+  if (kind !== RentalKind.PERSONAL) throw badRequest("I noleggi di un'uscita si gestiscono dalla pagina dell'uscita");
+}
+
 function assertStatus(current: RentalStatus, expected: RentalStatus, action: string) {
   if (current !== expected) throw new HttpError(409, `Impossibile ${action}: il noleggio non è nello stato corretto`);
 }
@@ -158,7 +165,7 @@ function assertStatus(current: RentalStatus, expected: RentalStatus, action: str
 /** POST /api/rentals/:id/cancel — il socio annulla le proprie prenotazioni non ancora ritirate. */
 rentalsRouter.post("/:id/cancel", async (req, res) => {
   const rental = await loadRental(req);
-  if (rental.kind !== RentalKind.PERSONAL) throw badRequest("I noleggi di un'uscita si gestiscono dall'uscita");
+  assertPersonal(rental.kind);
   assertStatus(rental.status, RentalStatus.RESERVED, "annullare");
 
   const updated = await prisma.rental.update({
@@ -172,6 +179,7 @@ rentalsRouter.post("/:id/cancel", async (req, res) => {
 /** POST /api/rentals/:id/pickup — consegna del materiale: i pezzi passano "In noleggio". */
 rentalsRouter.post("/:id/pickup", authorize(...STAFF), async (req, res) => {
   const rental = await loadRental(req);
+  assertPersonal(rental.kind);
   assertStatus(rental.status, RentalStatus.RESERVED, "registrare la consegna");
   const itemIds = rental.items.map((row) => row.itemId);
 
@@ -199,6 +207,7 @@ rentalsRouter.post("/:id/pickup", authorize(...STAFF), async (req, res) => {
 /** POST /api/rentals/:id/return — rientro del materiale: i pezzi tornano "Disponibile". */
 rentalsRouter.post("/:id/return", authorize(...STAFF), async (req, res) => {
   const rental = await loadRental(req);
+  assertPersonal(rental.kind);
   assertStatus(rental.status, RentalStatus.ACTIVE, "registrare il rientro");
   const itemIds = rental.items.map((row) => row.itemId);
 

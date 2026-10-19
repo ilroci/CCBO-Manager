@@ -89,3 +89,45 @@ export interface Rental {
   charges: RentalCharge[];
   createdAt: string;
 }
+
+export type OutingStatus = "PLANNED" | "ONGOING" | "COMPLETED" | "CANCELLED";
+export type TravelMode = "VAN" | "TRANSPORT_ONLY" | "AUTONOMOUS";
+export type PaymentStatus = "PENDING" | "PAID";
+
+type Person = Pick<User, "id" | "firstName" | "lastName" | "email">;
+
+export interface OutingParticipant {
+  id: string;
+  member: Person;
+  travelMode: TravelMode;
+  rentalAmount: string;
+  transportAmount: string;
+  vanSeatAmount: string;
+  expensesShare: string;
+  totalAmount: string;
+  paymentStatus: PaymentStatus;
+  paidAt: string | null;
+  paidConfirmedBy: Person | null;
+  rental: {
+    id: string;
+    status: RentalStatus;
+    total: string;
+    items: { id: string; itemId: string; returnedAt: string | null; item: EquipmentItem }[];
+    charges: RentalCharge[];
+  } | null;
+}
+
+export interface Outing {
+  id: string;
+  title: string;
+  destination: string | null;
+  startDate: string;
+  endDate: string;
+  days: number;
+  status: OutingStatus;
+  instructor: Person;
+  vanSeats: number | null;
+  notes: string | null;
+  participants: OutingParticipant[];
+  totals: { participants: number; aboardVan: number; total: string; collected: string };
+}
