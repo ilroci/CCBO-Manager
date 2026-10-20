@@ -16,14 +16,14 @@ import { cn } from "@/lib/utils";
 type When = "upcoming" | "past" | "all";
 
 const WHEN_OPTIONS: { value: When; label: string }[] = [
+  { value: "all", label: "Tutte" },
   { value: "upcoming", label: "Prossime e in corso" },
   { value: "past", label: "Passate" },
-  { value: "all", label: "Tutte" },
 ];
 
 export function OutingsPage() {
   const navigate = useNavigate();
-  const [when, setWhen] = useState<When>("upcoming");
+  const [when, setWhen] = useState<When>("all");
   const [outings, setOutings] = useState<Outing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();

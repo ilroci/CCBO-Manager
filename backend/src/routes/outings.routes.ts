@@ -72,20 +72,34 @@ async function assertInstructor(id: string) {
   }
 }
 
-const listQuerySchema = z.object({ when: z.enum(["upcoming", "past", "all"]).default("upcoming") });
+const listQuerySchema = z.object({ when: z.enum(["upcoming", "past", "all"]).default("all") });
 
-/** GET /api/outings?when=upcoming|past|all — prossime in ordine di data, passate dalla più recente. */
+/**
+ * GET /api/outings?when=upcoming|past|all — prossime e in corso in ordine di data, passate dalla
+ * più recente; con `all` prima le prossime, poi le passate.
+ */
 outingsRouter.get("/", async (req, res) => {
   const { when } = listQuerySchema.parse(req.query);
   const today = parseDate(todayInItaly());
-  const where: Prisma.OutingWhereInput =
-    when === "upcoming" ? { endDate: { gte: today } } : when === "past" ? { endDate: { lt: today } } : {};
-  const outings = await prisma.outing.findMany({
-    where,
-    include: outingInclude,
-    orderBy: { startDate: when === "upcoming" ? "asc" : "desc" },
-    take: 200,
-  });
+  const [upcoming, past] = await Promise.all([
+    when === "past"
+      ? []
+      : prisma.outing.findMany({
+          where: { endDate: { gte: today } },
+          include: outingInclude,
+          orderBy: { startDate: "asc" },
+          take: 200,
+        }),
+    when === "upcoming"
+      ? []
+      : prisma.outing.findMany({
+          where: { endDate: { lt: today } },
+          include: outingInclude,
+          orderBy: { startDate: "desc" },
+          take: 200,
+        }),
+  ]);
+  const outings = [...upcoming, ...past];
   res.json({ outings: outings.map(toOutingDto) });
 });
 
