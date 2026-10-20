@@ -44,25 +44,41 @@ export function ParticipantCard({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         className={cn(
-          "flex items-center justify-between gap-3 px-4 py-3 text-left outline-none hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50",
+          "flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 text-left outline-none hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50",
           open ? "rounded-t-xl" : "rounded-xl",
         )}
       >
-        <span className="flex min-w-0 items-center gap-2">
+        <span className="flex items-center gap-2">
           <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
-          <span className="truncate font-medium">
+          <span className="font-medium">
             {p.member.lastName} {p.member.firstName}
           </span>
         </span>
-        <span className="shrink-0 text-right">
+        <span className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
           {p.collections.length === 0 ? (
             <span className="text-sm text-muted-foreground">Nulla da pagare</span>
-          ) : unpaid.length === 0 ? (
-            <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Pagato</span>
           ) : (
             <>
-              <span className="font-semibold tabular-nums">{formatEuro(due)}</span>
-              {expensesDue && <span className="text-xs text-muted-foreground"> + costi vivi</span>}
+              {unpaid.length > 0 && (
+                <span className="text-right">
+                  <span className="font-semibold tabular-nums">{formatEuro(due)}</span>
+                  {expensesDue && <span className="text-xs text-muted-foreground"> + costi vivi</span>}
+                </span>
+              )}
+              <Badge
+                className={cn(
+                  "border-transparent",
+                  unpaid.length === 0
+                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+                )}
+              >
+                {unpaid.length === 0
+                  ? "Tutto riscosso"
+                  : unpaid.length === 1
+                    ? "1 voce da riscuotere"
+                    : `${unpaid.length} voci da riscuotere`}
+              </Badge>
             </>
           )}
         </span>
