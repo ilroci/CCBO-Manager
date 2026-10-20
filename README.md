@@ -99,8 +99,10 @@ npm run dev
   Render frontend e backend hanno domini diversi e un cookie di sessione sarebbe di terze parti.
 - A ogni richiesta il backend rilegge l'utente dal database, quindi un cambio di ruolo
   o una disattivazione valgono subito, anche con un token già emesso.
-- Gli utenti non si cancellano: si disattivano, per conservare lo storico. Un amministratore
-  non può togliersi il ruolo né disattivarsi da solo.
+- Un utente si può **disattivare** (conserva lo storico) o **eliminare** (spariscono anche i
+  suoi noleggi, le partecipazioni alle uscite e le relative riscossioni). Non si può eliminare
+  chi è responsabile di un'uscita finché non la si assegna a un altro istruttore. Un
+  amministratore non può togliersi il ruolo, disattivarsi o eliminarsi da solo.
 
 | Area | Admin | Istruttore | Socio |
 |---|:-:|:-:|:-:|
@@ -125,6 +127,7 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `GET` | `/api/users/:id` | Admin |
 | `POST` | `/api/users` | Admin |
 | `PATCH` | `/api/users/:id` | Admin |
+| `DELETE` | `/api/users/:id` | Admin: elimina l'utente con noleggi, partecipazioni e riscossioni (non se responsabile di uscite) |
 | `GET` | `/api/equipment?category=&status=&q=&includeArchived=` | autenticato (archiviati solo Admin) |
 | `GET` | `/api/equipment/:id` | autenticato |
 | `GET` | `/api/equipment/:id/photo` | pubblico (serve ai tag `<img>`) |

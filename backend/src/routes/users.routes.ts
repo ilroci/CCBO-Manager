@@ -2,7 +2,7 @@ import { Role, type Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { hashPassword, publicUserSelect } from "../lib/auth";
-import { badRequest } from "../lib/http-error";
+import { badRequest, HttpError } from "../lib/http-error";
 import { prisma } from "../lib/prisma";
 import { authenticate, authorize } from "../middleware/auth";
 import { passwordSchema } from "./schemas";
@@ -83,7 +83,7 @@ const updateUserSchema = createUserSchema
 
 /**
  * PATCH /api/users/:id — modifica anagrafica, ruolo, stato o password.
- * Non c'è DELETE: un utente si disattiva (`isActive: false`) per non perdere lo storico.
+ * Per sospendere un utente senza perdere lo storico lo si disattiva (`isActive: false`).
  */
 usersRouter.patch("/:id", authorize(Role.ADMIN), async (req, res) => {
   const { id } = idParamsSchema.parse(req.params);
@@ -105,4 +105,34 @@ usersRouter.patch("/:id", authorize(Role.ADMIN), async (req, res) => {
     select: publicUserSelect,
   });
   res.json({ user });
+});
+
+/**
+ * DELETE /api/users/:id — elimina l'utente con i suoi noleggi personali e le sue
+ * partecipazioni alle uscite (comprese le riscossioni). Le uscite di cui è responsabile
+ * vanno prima assegnate a un altro istruttore.
+ */
+usersRouter.delete("/:id", authorize(Role.ADMIN), async (req, res) => {
+  const { id } = idParamsSchema.parse(req.params);
+  if (id === req.user!.id) throw badRequest("Non puoi eliminare il tuo account");
+
+  await prisma.user.findUniqueOrThrow({ where: { id }, select: { id: true } });
+  const outingsLed = await prisma.outing.count({ where: { instructorId: id } });
+  if (outingsLed > 0) {
+    throw new HttpError(
+      409,
+      outingsLed === 1
+        ? "È responsabile di un'uscita: assegnala a un altro istruttore prima di eliminarlo"
+        : `È responsabile di ${outingsLed} uscite: assegnale a un altro istruttore prima di eliminarlo`,
+    );
+  }
+
+  await prisma.$transaction([
+    // Partecipazioni → noleggio dell'uscita e riscossioni in cascata.
+    prisma.outingParticipant.deleteMany({ where: { memberId: id } }),
+    // Noleggi personali → pezzi e voci in cascata.
+    prisma.rental.deleteMany({ where: { memberId: id } }),
+    prisma.user.delete({ where: { id } }),
+  ]);
+  res.status(204).end();
 });

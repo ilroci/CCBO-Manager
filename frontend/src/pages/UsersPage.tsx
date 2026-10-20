@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Loader2, Pencil, Plus } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCurrentUser } from "@/auth/AuthContext";
 import { ALL_ROLES, ROLE_LABELS } from "@/auth/permissions";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FormError } from "@/components/FormError";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,10 +32,12 @@ import type { Role, User } from "@/lib/types";
 type Editing = User | null | undefined;
 
 export function UsersPage() {
+  const currentUser = useCurrentUser();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [editing, setEditing] = useState<Editing>(undefined);
+  const [deleting, setDeleting] = useState<User>();
 
   const load = useCallback(async () => {
     try {
@@ -96,9 +99,16 @@ export function UsersPage() {
                   </TableCell>
                   <TableCell>{user.isActive ? "Attivo" : "Disattivato"}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" title="Modifica" onClick={() => setEditing(user)}>
-                      <Pencil />
-                    </Button>
+                    <div className="flex">
+                      <Button variant="ghost" size="icon" title="Modifica" onClick={() => setEditing(user)}>
+                        <Pencil />
+                      </Button>
+                      {user.id !== currentUser.id && (
+                        <Button variant="ghost" size="icon" title="Elimina" onClick={() => setDeleting(user)}>
+                          <Trash2 />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -115,6 +125,21 @@ export function UsersPage() {
           void load();
         }}
       />
+
+      {deleting && (
+        <ConfirmDialog
+          open
+          title={`Eliminare ${deleting.firstName} ${deleting.lastName}?`}
+          description="Vengono eliminati anche i suoi noleggi, le partecipazioni alle uscite e le relative riscossioni. L'operazione non si può annullare: per sospendere un utente conservando lo storico, disattivalo da Modifica."
+          confirmLabel="Elimina"
+          onClose={() => setDeleting(undefined)}
+          onConfirm={async () => {
+            await api.delete(`/api/users/${deleting.id}`);
+            setDeleting(undefined);
+            void load();
+          }}
+        />
+      )}
     </div>
   );
 }
