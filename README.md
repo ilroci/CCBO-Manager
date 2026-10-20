@@ -226,7 +226,8 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   tipo `OUTING` con le date dell'uscita, le voci in `RentalCharge` e gli eventuali pezzi in
   `RentalItem`; compare in "I miei noleggi" del socio. Il materiale specifico si può cambiare
   anche a noleggio riscosso (non incide sul prezzo); cambiando le date le voci mantengono il
-  prezzo giornaliero applicato. Il rientro del materiale è una spunta (per socio o "tutto rientrato"), annullabile;
+  prezzo giornaliero applicato. Il rientro del materiale è una spunta (per socio o "tutto rientrato"), annullabile, e compare
+  solo per i soci a cui sono stati assegnati pezzi specifici;
   se si cambiano i pezzi di un socio, il suo materiale torna "da far rientrare". Cambiare le
   date sposta i noleggi e ricalcola le quote. Se l'uscita indica i posti sul furgone, i
   partecipanti "A bordo" non possono superarli. Qualunque istruttore può gestire qualunque uscita.
@@ -235,8 +236,8 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   (1) **noleggio**, (2) **trasporto attrezzatura**, (3) **quota furgone + costi vivi**, mostrati
   separati ma riscossi insieme; i costi vivi non hanno importo nel gestionale. Una voce riscossa
   non può cambiare finché la riscossione non viene annullata: noleggio riscosso → voci e date
-  bloccate (il materiale specifico resta modificabile); furgone o trasporto riscosso → modalità di viaggio bloccata. Per rimuovere un socio
-  vanno prima annullate le sue riscossioni.
+  bloccate (il materiale specifico resta modificabile); furgone o trasporto riscosso → modalità di viaggio bloccata. Rimuovere un socio
+  elimina anche il suo noleggio e le sue riscossioni.
 - **Quota individuale** = noleggio (voci × giorni dell'uscita) + servizio furgone, a tariffa
   fissa per uscita modificabile dall'admin nel Listino (`ServiceFee`):
   A) a bordo → **quota furgone 5 €** (VAN_SEAT); B) solo trasporto attrezzatura → **5 €**

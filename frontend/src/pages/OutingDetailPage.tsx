@@ -83,7 +83,7 @@ export function OutingDetailPage() {
     },
     remove: {
       title: "Rimuovere il partecipante?",
-      description: "Il suo noleggio per l'uscita viene eliminato e l'attrezzatura torna disponibile.",
+      description: "Il suo noleggio e le eventuali riscossioni vengono eliminati; l'attrezzatura torna disponibile.",
       label: "Rimuovi",
     },
   };

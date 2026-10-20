@@ -177,7 +177,7 @@ outingsRouter.post("/:id/return-all", async (req, res) => {
   const { id } = idParams.parse(req.params);
   const outing = await loadOuting(id);
   await prisma.$transaction((tx) =>
-    setReturned(tx, outing.participants.flatMap((p) => (p.rental ? [p.rental.id] : [])), true),
+    setReturned(tx, outing.participants.flatMap((p) => (p.rental?.items.length ? [p.rental.id] : [])), true),
   );
   await respond(res, id);
 });
@@ -310,11 +310,8 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
 
 outingsRouter.delete("/:id/participants/:pid", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
-  const outing = await loadOuting(id);
-  if (findParticipant(outing, pid).payments.length > 0) {
-    throw new HttpError(409, "Il socio ha voci già riscosse: annulla le riscossioni prima di rimuoverlo");
-  }
-  // Il noleggio collegato viene eliminato in cascata.
+  findParticipant(await loadOuting(id), pid);
+  // Noleggio e riscossioni del socio vengono eliminati in cascata.
   await prisma.outingParticipant.delete({ where: { id: pid } });
   await respond(res, id);
 });
@@ -325,7 +322,7 @@ outingsRouter.post("/:id/participants/:pid/return", async (req, res) => {
   const { returned } = z.object({ returned: z.boolean().default(true) }).parse(req.body ?? {});
   const outing = await loadOuting(id);
   const participant = findParticipant(outing, pid);
-  if (!participant.rental) throw badRequest("Il socio non ha attrezzatura del club");
+  if (!participant.rental?.items.length) throw badRequest("Al socio non è assegnato materiale specifico");
 
   await prisma.$transaction((tx) => setReturned(tx, [participant.rental!.id], returned));
   await respond(res, id);

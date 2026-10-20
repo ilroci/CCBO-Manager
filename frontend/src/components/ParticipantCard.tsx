@@ -1,4 +1,4 @@
-import { CircleCheck, Lock, PackageCheck, Pencil, Trash2, Undo2 } from "lucide-react";
+import { CircleCheck, PackageCheck, Pencil, Trash2, Undo2 } from "lucide-react";
 import { ItemThumbnail } from "@/components/ItemThumbnail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,8 @@ export function ParticipantCard({
 }) {
   const mode = TRAVEL_MODE_LABELS[p.travelMode];
   const pending = p.collections.filter((c) => !c.payment).length;
-  const anyPaid = p.collections.some((c) => c.payment);
+  /** Il rientro ha senso solo se al socio sono stati assegnati pezzi specifici. */
+  const hasItems = (p.rental?.items.length ?? 0) > 0;
   const aboard = p.travelMode === "VAN";
 
   return (
@@ -42,8 +43,8 @@ export function ParticipantCard({
             </div>
             <div className="text-sm text-muted-foreground">
               {mode.letter}) {mode.short}
-              {p.rental?.status === "RESERVED" && " · materiale da far rientrare"}
-              {p.rental?.status === "RETURNED" && " · materiale rientrato"}
+              {hasItems && p.rental?.status === "RESERVED" && " · materiale da far rientrare"}
+              {hasItems && p.rental?.status === "RETURNED" && " · materiale rientrato"}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -83,12 +84,12 @@ export function ParticipantCard({
         )}
 
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {p.rental?.status === "RESERVED" && (
+          {hasItems && p.rental?.status === "RESERVED" && (
             <Button variant="outline" size="sm" disabled={busy} onClick={() => onReturn(true)}>
               <PackageCheck /> Materiale rientrato
             </Button>
           )}
-          {p.rental?.status === "RETURNED" && (
+          {hasItems && p.rental?.status === "RETURNED" && (
             <Button variant="ghost" size="sm" disabled={busy} onClick={() => onReturn(false)}>
               <Undo2 /> Annulla rientro
             </Button>
@@ -96,15 +97,9 @@ export function ParticipantCard({
           <Button variant="ghost" size="sm" disabled={busy} onClick={onEdit}>
             <Pencil /> Modifica
           </Button>
-          {anyPaid ? (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Lock className="size-3" /> Per rimuoverlo annulla prima le riscossioni
-            </span>
-          ) : (
-            <Button variant="ghost" size="sm" disabled={busy} onClick={onRemove}>
-              <Trash2 /> Rimuovi
-            </Button>
-          )}
+          <Button variant="ghost" size="sm" disabled={busy} onClick={onRemove}>
+            <Trash2 /> Rimuovi
+          </Button>
         </div>
       </CardContent>
     </Card>

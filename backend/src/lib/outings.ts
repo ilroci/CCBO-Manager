@@ -296,7 +296,8 @@ export function toOutingDto(outing: OutingWithRelations) {
       participants: participants.length,
       aboardVan: participants.filter((p) => p.travelMode === TravelMode.VAN).length,
       /** Soci con attrezzatura del club non ancora segnata come rientrata. */
-      toReturn: participants.filter((p) => p.rental?.status === RentalStatus.RESERVED).length,
+      // Senza pezzi assegnati non c'è nulla da far rientrare.
+      toReturn: participants.filter((p) => p.rental?.status === RentalStatus.RESERVED && p.rental.items.length > 0).length,
       /** Importi noti (costi vivi esclusi) e quanto ne è già stato riscosso. */
       total: money(total),
       collected: money(collected),
