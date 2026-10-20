@@ -38,7 +38,7 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       MAIL_FROM: "Canoa Club <noreply@canoaclub.local>"
-      SUGGESTIONS_TO: consigli@canoaclub.local
+      SUGGESTIONS_TO: giacomo.ceremeletti@gmail.com
     ports:
       - "3000:3000"
     volumes:

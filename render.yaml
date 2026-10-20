@@ -30,7 +30,7 @@ services:
       - key: MAIL_FROM
         sync: false
       - key: SUGGESTIONS_TO
-        sync: false
+        value: giacomo.ceremeletti@gmail.com
 
   - type: web
     name: canoa-club-frontend

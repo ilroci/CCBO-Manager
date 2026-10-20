@@ -175,7 +175,7 @@ il browser può tenere in cache.
   (almeno 32 caratteri casuali; il Blueprint lo genera da solo), `NODE_VERSION=22`
 - Env facoltative per la sezione **Consigli**: `SMTP_HOST`, `SMTP_PORT` (587, oppure 465 con
   `SMTP_SECURE=true`), `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `SUGGESTIONS_TO` (l'indirizzo che
-  riceve i messaggi). Senza `SMTP_HOST` o `SUGGESTIONS_TO` il form compare disattivato.
+  riceve i messaggi: `giacomo.ceremeletti@gmail.com`, già impostato nel Blueprint). Senza `SMTP_HOST` o `SUGGESTIONS_TO` il form compare disattivato.
   Con Gmail serve una *password per le app*. Il piano free di Render blocca le porte SMTP
   in uscita: in quel caso serve un'istanza a pagamento.
 
