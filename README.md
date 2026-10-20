@@ -144,8 +144,9 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `POST` | `/api/rentals/:id/cancel` | proprietario (se Prenotato), Admin, Istruttore |
 | `POST` | `/api/rentals/:id/pickup` · `/return` | Admin, Istruttore (solo noleggi personali) |
 | `GET` · `POST` | `/api/outings?when=upcoming\|past\|all` | Admin, Istruttore |
-| `GET` · `PATCH` · `DELETE` | `/api/outings/:id` | Admin, Istruttore |
-| `POST` | `/api/outings/:id/cancel` · `/return-all` | Admin, Istruttore |
+| `GET` · `PATCH` | `/api/outings/:id` | Admin, Istruttore |
+| `DELETE` | `/api/outings/:id` | Admin, Istruttore: annulla l'uscita eliminando partecipanti, noleggi e riscossioni |
+| `POST` | `/api/outings/:id/return-all` | Admin, Istruttore |
 | `POST` | `/api/outings/:id/quote` | Admin, Istruttore (riepilogo quota del wizard) |
 | `POST` | `/api/outings/:id/participants` | Admin, Istruttore (wizard) |
 | `PATCH` · `DELETE` | `/api/outings/:id/participants/:pid` | Admin, Istruttore |
@@ -214,8 +215,9 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
 - **Servizi furgone** (`ServiceFee`, una tariffa per tipo): quota furgone e trasporto
   attrezzatura, 5 € ciascuno per uscita.
 - **Uscite**: si salvano e restano sempre modificabili (dati, date, partecipanti, attrezzatura,
-  trasporto) finché non vengono annullate. Programmata / In corso / Conclusa si ricava dalle
-  date; l'unico stato salvato è attiva/annullata. I partecipanti si aggiungono col wizard:
+  trasporto). Programmata / In corso / Conclusa si ricava dalle date. **Annullare** un'uscita
+  la elimina con tutto quello che contiene (partecipanti, noleggi, riscossioni), anche se ci
+  sono quote già riscosse: il materiale torna subito prenotabile. I partecipanti si aggiungono col wizard:
   socio → noleggio → modalità di viaggio A/B/C → riepilogo con la quota. Il noleggio ha due
   livelli: la **vista rapida** in cui si scelgono le voci di listino (Pacchetto Kayak, Giacca
   d'acqua, Muta) che determinano il prezzo, senza indicare pezzi e senza bloccarne nessuno;
@@ -234,7 +236,7 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   separati ma riscossi insieme; i costi vivi non hanno importo nel gestionale. Una voce riscossa
   non può cambiare finché la riscossione non viene annullata: noleggio riscosso → voci e date
   bloccate (il materiale specifico resta modificabile); furgone o trasporto riscosso → modalità di viaggio bloccata. Per rimuovere un socio
-  o annullare l'uscita vanno prima annullate le riscossioni.
+  vanno prima annullate le sue riscossioni.
 - **Quota individuale** = noleggio (voci × giorni dell'uscita) + servizio furgone, a tariffa
   fissa per uscita modificabile dall'admin nel Listino (`ServiceFee`):
   A) a bordo → **quota furgone 5 €** (VAN_SEAT); B) solo trasporto attrezzatura → **5 €**

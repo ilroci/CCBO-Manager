@@ -14,7 +14,6 @@ import { cn } from "@/lib/utils";
  */
 export function ParticipantCard({
   participant: p,
-  editable,
   busy,
   onEdit,
   onRemove,
@@ -22,8 +21,6 @@ export function ParticipantCard({
   onReturn,
 }: {
   participant: OutingParticipant;
-  /** false se l'uscita è annullata */
-  editable: boolean;
   busy: boolean;
   onEdit: () => void;
   onRemove: () => void;
@@ -78,7 +75,6 @@ export function ParticipantCard({
                 key={c.category}
                 collection={c}
                 participant={p}
-                editable={editable}
                 busy={busy}
                 onCollect={(paid) => onCollect(c.category, paid)}
               />
@@ -86,32 +82,30 @@ export function ParticipantCard({
           </div>
         )}
 
-        {editable && (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {p.rental?.status === "RESERVED" && (
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => onReturn(true)}>
-                <PackageCheck /> Materiale rientrato
-              </Button>
-            )}
-            {p.rental?.status === "RETURNED" && (
-              <Button variant="ghost" size="sm" disabled={busy} onClick={() => onReturn(false)}>
-                <Undo2 /> Annulla rientro
-              </Button>
-            )}
-            <Button variant="ghost" size="sm" disabled={busy} onClick={onEdit}>
-              <Pencil /> Modifica
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {p.rental?.status === "RESERVED" && (
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => onReturn(true)}>
+              <PackageCheck /> Materiale rientrato
             </Button>
-            {anyPaid ? (
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Lock className="size-3" /> Per rimuoverlo annulla prima le riscossioni
-              </span>
-            ) : (
-              <Button variant="ghost" size="sm" disabled={busy} onClick={onRemove}>
-                <Trash2 /> Rimuovi
-              </Button>
-            )}
-          </div>
-        )}
+          )}
+          {p.rental?.status === "RETURNED" && (
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => onReturn(false)}>
+              <Undo2 /> Annulla rientro
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" disabled={busy} onClick={onEdit}>
+            <Pencil /> Modifica
+          </Button>
+          {anyPaid ? (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Lock className="size-3" /> Per rimuoverlo annulla prima le riscossioni
+            </span>
+          ) : (
+            <Button variant="ghost" size="sm" disabled={busy} onClick={onRemove}>
+              <Trash2 /> Rimuovi
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -120,13 +114,11 @@ export function ParticipantCard({
 function CollectionRow({
   collection: c,
   participant: p,
-  editable,
   busy,
   onCollect,
 }: {
   collection: Collection;
   participant: OutingParticipant;
-  editable: boolean;
   busy: boolean;
   onCollect: (paid: boolean) => void;
 }) {
@@ -193,20 +185,14 @@ function CollectionRow({
           {formatEuro(c.amount)}
           {c.includesExpenses && <span className="font-normal text-muted-foreground"> + costi vivi</span>}
         </span>
-        {editable &&
-          (paid ? (
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => onCollect(false)}>
-              <Undo2 /> Annulla riscossione
-            </Button>
-          ) : (
-            <Button size="sm" disabled={busy} onClick={() => onCollect(true)}>
-              <CircleCheck /> {c.includesExpenses ? "Riscuoti quota e costi vivi" : "Riscuoti"}
-            </Button>
-          ))}
-        {!editable && paid && (
-          <Badge className="border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-            Riscosso
-          </Badge>
+        {paid ? (
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => onCollect(false)}>
+            <Undo2 /> Annulla riscossione
+          </Button>
+        ) : (
+          <Button size="sm" disabled={busy} onClick={() => onCollect(true)}>
+            <CircleCheck /> {c.includesExpenses ? "Riscuoti quota e costi vivi" : "Riscuoti"}
+          </Button>
         )}
       </div>
     </div>

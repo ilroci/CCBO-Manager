@@ -91,7 +91,7 @@ export function OutingsPage() {
               to={`/outings/${outing.id}`}
               className="rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
-              <Card className={cn("h-full gap-3 py-4 transition-colors hover:bg-accent/40", outing.status === "CANCELLED" && "opacity-60")}>
+              <Card className="h-full gap-3 py-4 transition-colors hover:bg-accent/40">
                 <CardContent className="grid gap-3 px-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">

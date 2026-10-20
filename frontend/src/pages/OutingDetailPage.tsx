@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Ban, Loader2, MapPin, PackageCheck, Pencil, Trash2, UserPlus } from "lucide-react";
+import { ArrowLeft, Ban, Loader2, MapPin, PackageCheck, Pencil, UserPlus } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FormError } from "@/components/FormError";
 import { OutingFormDialog, type OutingEditing } from "@/components/OutingFormDialog";
@@ -15,7 +15,7 @@ import { OUTING_PHASE_CLASSES, OUTING_PHASE_LABELS, outingPhase } from "@/lib/ou
 import type { Outing, OutingParticipant } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type Confirm = { kind: "cancel" | "delete" } | { kind: "remove"; participant: OutingParticipant };
+type Confirm = { kind: "cancel" } | { kind: "remove"; participant: OutingParticipant };
 
 export function OutingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -70,16 +70,17 @@ export function OutingDetailPage() {
   }
 
   const phase = outingPhase(outing);
-  const cancelled = outing.status === "CANCELLED";
   const toCollect = Number(outing.totals.total) - Number(outing.totals.collected);
 
   const confirmTexts: Record<Confirm["kind"], { title: string; description: string; label: string }> = {
     cancel: {
       title: "Annullare l'uscita?",
-      description: "I noleggi dei partecipanti vengono annullati e l'attrezzatura torna prenotabile.",
+      description:
+        outing.participants.length > 0
+          ? "L'uscita viene eliminata con tutti i partecipanti, le riscossioni registrate e il materiale prenotato, che torna subito disponibile. L'operazione non si può annullare."
+          : "L'uscita viene eliminata. L'operazione non si può annullare.",
       label: "Annulla uscita",
     },
-    delete: { title: "Eliminare l'uscita?", description: "L'uscita non ha partecipanti e verrà eliminata.", label: "Elimina" },
     remove: {
       title: "Rimuovere il partecipante?",
       description: "Il suo noleggio per l'uscita viene eliminato e l'attrezzatura torna disponibile.",
@@ -89,15 +90,12 @@ export function OutingDetailPage() {
 
   async function runConfirm() {
     if (!confirm) return;
-    if (confirm.kind === "delete") {
+    if (confirm.kind === "cancel") {
       await api.delete(`/api/outings/${id}`);
       navigate("/outings");
       return;
     }
-    const { data } =
-      confirm.kind === "remove"
-        ? await api.delete<{ outing: Outing }>(`/api/outings/${id}/participants/${confirm.participant.id}`)
-        : await api.post<{ outing: Outing }>(`/api/outings/${id}/cancel`);
+    const { data } = await api.delete<{ outing: Outing }>(`/api/outings/${id}/participants/${confirm.participant.id}`);
     setOuting(data.outing);
     setConfirm(undefined);
   }
@@ -133,21 +131,12 @@ export function OutingDetailPage() {
             {outing.notes && <p className="mt-2 max-w-prose text-sm whitespace-pre-line">{outing.notes}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
-            {outing.participants.length === 0 && (
-              <Button variant="outline" onClick={() => setConfirm({ kind: "delete" })}>
-                <Trash2 /> Elimina
-              </Button>
-            )}
-            {!cancelled && outing.participants.length > 0 && (
-              <Button variant="outline" onClick={() => setConfirm({ kind: "cancel" })}>
-                <Ban /> Annulla uscita
-              </Button>
-            )}
-            {!cancelled && (
-              <Button variant="outline" onClick={() => setEditing(outing)}>
-                <Pencil /> Modifica dati
-              </Button>
-            )}
+            <Button variant="outline" onClick={() => setConfirm({ kind: "cancel" })}>
+              <Ban /> Annulla uscita
+            </Button>
+            <Button variant="outline" onClick={() => setEditing(outing)}>
+              <Pencil /> Modifica dati
+            </Button>
           </div>
         </div>
       </div>
@@ -182,23 +171,21 @@ export function OutingDetailPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Partecipanti</h2>
-        {!cancelled && (
-          <div className="flex flex-wrap gap-2">
-            {outing.totals.toReturn > 0 && (
-              <Button variant="outline" onClick={() => void returnAll()}>
-                <PackageCheck /> Tutto il materiale è rientrato
-              </Button>
-            )}
-            <Button onClick={() => setWizard(null)}>
-              <UserPlus /> Aggiungi socio
+        <div className="flex flex-wrap gap-2">
+          {outing.totals.toReturn > 0 && (
+            <Button variant="outline" onClick={() => void returnAll()}>
+              <PackageCheck /> Tutto il materiale è rientrato
             </Button>
-          </div>
-        )}
+          )}
+          <Button onClick={() => setWizard(null)}>
+            <UserPlus /> Aggiungi socio
+          </Button>
+        </div>
       </div>
 
       {outing.participants.length === 0 ? (
         <p className="rounded-xl border border-dashed py-12 text-center text-muted-foreground">
-          {cancelled ? "Nessun partecipante." : "Nessun partecipante: aggiungi i soci con il pulsante qui sopra."}
+          Nessun partecipante: aggiungi i soci con il pulsante qui sopra.
         </p>
       ) : (
         <div className="grid gap-3">
@@ -206,7 +193,6 @@ export function OutingDetailPage() {
             <ParticipantCard
               key={p.id}
               participant={p}
-              editable={!cancelled}
               busy={busyId === p.id}
               onEdit={() => setWizard(p)}
               onRemove={() => setConfirm({ kind: "remove", participant: p })}

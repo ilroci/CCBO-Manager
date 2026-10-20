@@ -90,7 +90,6 @@ export interface Rental {
   createdAt: string;
 }
 
-export type OutingStatus = "ACTIVE" | "CANCELLED";
 export type TravelMode = "VAN" | "TRANSPORT_ONLY" | "AUTONOMOUS";
 /** Voci riscosse separatamente in un'uscita. */
 export type CollectionCategory = "RENTAL" | "TRANSPORT" | "VAN";
@@ -132,7 +131,6 @@ export interface Outing {
   startDate: string;
   endDate: string;
   days: number;
-  status: OutingStatus;
   instructor: Person;
   vanSeats: number | null;
   notes: string | null;

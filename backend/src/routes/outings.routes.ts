@@ -1,4 +1,4 @@
-import { CollectionCategory, OutingStatus, RentalStatus, Role, TravelMode, type Prisma } from "@prisma/client";
+import { CollectionCategory, RentalStatus, Role, TravelMode, type Prisma } from "@prisma/client";
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { calendarDays, dateSchema, formatDate, parseDate, todayInItaly } from "../lib/dates";
@@ -39,10 +39,6 @@ async function loadOuting(id: string) {
 
 async function respond(res: Response, id: string, status = 200) {
   res.status(status).json({ outing: toOutingDto(await loadOuting(id)) });
-}
-
-function assertActive(outing: LoadedOuting) {
-  if (outing.status === OutingStatus.CANCELLED) throw new HttpError(409, "L'uscita è annullata");
 }
 
 const optionalText = z
@@ -121,7 +117,6 @@ outingsRouter.patch("/:id", async (req, res) => {
   const { id } = idParams.parse(req.params);
   const { start, end, instructorId, ...data } = outingSchema.partial().parse(req.body);
   const outing = await loadOuting(id);
-  assertActive(outing);
   if (instructorId) await assertInstructor(instructorId);
 
   const newStart = start ?? formatDate(outing.startDate);
@@ -152,34 +147,15 @@ outingsRouter.patch("/:id", async (req, res) => {
   await respond(res, id);
 });
 
-/** DELETE /api/outings/:id — solo uscite senza partecipanti (altrimenti si annulla). */
+/**
+ * DELETE /api/outings/:id — annulla l'uscita eliminando tutto: partecipanti, riscossioni e
+ * noleggi (cascade), quindi l'attrezzatura torna subito prenotabile.
+ */
 outingsRouter.delete("/:id", async (req, res) => {
   const { id } = idParams.parse(req.params);
-  const outing = await loadOuting(id);
-  if (outing.participants.length > 0) {
-    throw new HttpError(409, "L'uscita ha partecipanti: annullala invece di eliminarla");
-  }
+  await loadOuting(id);
   await prisma.outing.delete({ where: { id } });
   res.status(204).end();
-});
-
-/** POST /api/outings/:id/cancel — annulla l'uscita e libera l'attrezzatura. */
-outingsRouter.post("/:id/cancel", async (req, res) => {
-  const { id } = idParams.parse(req.params);
-  const outing = await loadOuting(id);
-  assertActive(outing);
-  if (outing.participants.some((p) => p.payments.length > 0)) {
-    throw new HttpError(409, "Ci sono riscossioni confermate: annullale prima di annullare l'uscita");
-  }
-
-  await prisma.$transaction([
-    prisma.rental.updateMany({
-      where: { participant: { outingId: id } },
-      data: { status: RentalStatus.CANCELLED },
-    }),
-    prisma.outing.update({ where: { id }, data: { status: OutingStatus.CANCELLED } }),
-  ]);
-  await respond(res, id);
 });
 
 /**
@@ -200,7 +176,6 @@ async function setReturned(tx: Prisma.TransactionClient, rentalIds: string[], re
 outingsRouter.post("/:id/return-all", async (req, res) => {
   const { id } = idParams.parse(req.params);
   const outing = await loadOuting(id);
-  assertActive(outing);
   await prisma.$transaction((tx) =>
     setReturned(tx, outing.participants.flatMap((p) => (p.rental ? [p.rental.id] : [])), true),
   );
@@ -254,7 +229,6 @@ outingsRouter.post("/:id/participants", async (req, res) => {
   const { id } = idParams.parse(req.params);
   const { memberId, optionIds, itemIds, travelMode } = participantSchema.parse(req.body);
   const outing = await loadOuting(id);
-  assertActive(outing);
 
   const member = await prisma.user.findUnique({ where: { id: memberId } });
   if (!member || !member.isActive) throw badRequest("Socio non trovato o disattivato");
@@ -291,7 +265,6 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
   const { optionIds, itemIds, travelMode } = updateParticipantSchema.parse(req.body);
   const outing = await loadOuting(id);
-  assertActive(outing);
   const participant = findParticipant(outing, pid);
 
   const paid = new Set(participant.payments.map((pay) => pay.category));
@@ -338,7 +311,6 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
 outingsRouter.delete("/:id/participants/:pid", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
   const outing = await loadOuting(id);
-  assertActive(outing);
   if (findParticipant(outing, pid).payments.length > 0) {
     throw new HttpError(409, "Il socio ha voci già riscosse: annulla le riscossioni prima di rimuoverlo");
   }
@@ -352,7 +324,6 @@ outingsRouter.post("/:id/participants/:pid/return", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
   const { returned } = z.object({ returned: z.boolean().default(true) }).parse(req.body ?? {});
   const outing = await loadOuting(id);
-  assertActive(outing);
   const participant = findParticipant(outing, pid);
   if (!participant.rental) throw badRequest("Il socio non ha attrezzatura del club");
 
@@ -371,7 +342,6 @@ outingsRouter.post("/:id/participants/:pid/payments/:category", async (req, res)
   const { id, pid, category } = paymentParams.parse(req.params);
   const { paid } = z.object({ paid: z.boolean() }).parse(req.body);
   const outing = await loadOuting(id);
-  assertActive(outing);
   const participant = findParticipant(outing, pid);
 
   if (!paid) {

@@ -287,7 +287,6 @@ export function toOutingDto(outing: OutingWithRelations) {
     startDate: formatDate(outing.startDate),
     endDate: formatDate(outing.endDate),
     days: calendarDays(outing.startDate, outing.endDate),
-    status: outing.status,
     instructor: outing.instructor,
     vanSeats: outing.vanSeats,
     notes: outing.notes,
