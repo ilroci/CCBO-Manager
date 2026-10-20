@@ -1,4 +1,5 @@
-import { CircleCheck, PackageCheck, Pencil, Trash2, Undo2 } from "lucide-react";
+import { useState } from "react";
+import { ChevronRight, CircleCheck, PackageCheck, Pencil, Trash2, Undo2 } from "lucide-react";
 import { ItemThumbnail } from "@/components/ItemThumbnail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,8 +10,9 @@ import type { Collection, CollectionCategory, OutingParticipant } from "@/lib/ty
 import { cn } from "@/lib/utils";
 
 /**
- * Scheda di un partecipante: una riga per ogni voce da riscuotere (noleggio, trasporto,
- * furgone + costi vivi), ciascuna con il proprio pulsante, perché si pagano in momenti diversi.
+ * Scheda di un partecipante. Chiusa mostra solo nome e quota ancora da pagare; aperta,
+ * una riga per ogni voce da riscuotere (noleggio, trasporto, furgone + costi vivi),
+ * ciascuna con il proprio pulsante, perché si pagano in momenti diversi.
  */
 export function ParticipantCard({
   participant: p,
@@ -27,81 +29,95 @@ export function ParticipantCard({
   onCollect: (category: CollectionCategory, paid: boolean) => void;
   onReturn: (returned: boolean) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const mode = TRAVEL_MODE_LABELS[p.travelMode];
-  const pending = p.collections.filter((c) => !c.payment).length;
+  const unpaid = p.collections.filter((c) => !c.payment);
+  const due = unpaid.reduce((sum, c) => sum + Number(c.amount), 0);
+  const expensesDue = unpaid.some((c) => c.includesExpenses);
   /** Il rientro ha senso solo se al socio sono stati assegnati pezzi specifici. */
   const hasItems = (p.rental?.items.length ?? 0) > 0;
-  const aboard = p.travelMode === "VAN";
 
   return (
-    <Card className="gap-3 py-4">
-      <CardContent className="grid gap-3 px-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="font-medium">
-              {p.member.lastName} {p.member.firstName}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {mode.letter}) {mode.short}
-              {hasItems && p.rental?.status === "RESERVED" && " · materiale da far rientrare"}
-              {hasItems && p.rental?.status === "RETURNED" && " · materiale rientrato"}
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-right">
-              <span className="text-lg font-semibold tabular-nums">{formatEuro(p.totalAmount)}</span>
-              {aboard && <span className="block text-xs text-muted-foreground">+ costi vivi</span>}
-            </span>
+    <Card className="gap-0 py-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={cn(
+          "flex items-center justify-between gap-3 px-4 py-3 text-left outline-none hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50",
+          open ? "rounded-t-xl" : "rounded-xl",
+        )}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
+          <span className="truncate font-medium">
+            {p.member.lastName} {p.member.firstName}
+          </span>
+        </span>
+        <span className="shrink-0 text-right">
+          {p.collections.length === 0 ? (
+            <span className="text-sm text-muted-foreground">Nulla da pagare</span>
+          ) : unpaid.length === 0 ? (
+            <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Pagato</span>
+          ) : (
+            <>
+              <span className="font-semibold tabular-nums">{formatEuro(due)}</span>
+              {expensesDue && <span className="text-xs text-muted-foreground"> + costi vivi</span>}
+            </>
+          )}
+        </span>
+      </button>
+
+      {open && (
+        <CardContent className="grid gap-3 border-t px-4 py-3">
+          <div className="text-sm text-muted-foreground">
+            {mode.letter}) {mode.short}
+            {hasItems && p.rental?.status === "RESERVED" && " · materiale da far rientrare"}
+            {hasItems && p.rental?.status === "RETURNED" && " · materiale rientrato"}
             {p.collections.length > 0 && (
-              <Badge
-                className={cn(
-                  "border-transparent",
-                  pending === 0
-                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                    : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-                )}
-              >
-                {pending === 0 ? "Tutto riscosso" : pending === 1 ? "1 voce da riscuotere" : `${pending} voci da riscuotere`}
-              </Badge>
+              <>
+                {" · quota totale "}
+                <span className="tabular-nums">{formatEuro(p.totalAmount)}</span>
+              </>
             )}
           </div>
-        </div>
 
-        {p.collections.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Attrezzatura propria e viaggio autonomo: nulla da riscuotere.</p>
-        ) : (
-          <div className="divide-y rounded-lg border">
-            {p.collections.map((c) => (
-              <CollectionRow
-                key={c.category}
-                collection={c}
-                participant={p}
-                busy={busy}
-                onCollect={(paid) => onCollect(c.category, paid)}
-              />
-            ))}
+          {p.collections.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Attrezzatura propria e viaggio autonomo: nulla da riscuotere.</p>
+          ) : (
+            <div className="divide-y rounded-lg border">
+              {p.collections.map((c) => (
+                <CollectionRow
+                  key={c.category}
+                  collection={c}
+                  participant={p}
+                  busy={busy}
+                  onCollect={(paid) => onCollect(c.category, paid)}
+                />
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {hasItems && p.rental?.status === "RESERVED" && (
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => onReturn(true)}>
+                <PackageCheck /> Materiale rientrato
+              </Button>
+            )}
+            {hasItems && p.rental?.status === "RETURNED" && (
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => onReturn(false)}>
+                <Undo2 /> Annulla rientro
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" disabled={busy} onClick={onEdit}>
+              <Pencil /> Modifica
+            </Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={onRemove}>
+              <Trash2 /> Rimuovi
+            </Button>
           </div>
-        )}
-
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {hasItems && p.rental?.status === "RESERVED" && (
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => onReturn(true)}>
-              <PackageCheck /> Materiale rientrato
-            </Button>
-          )}
-          {hasItems && p.rental?.status === "RETURNED" && (
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => onReturn(false)}>
-              <Undo2 /> Annulla rientro
-            </Button>
-          )}
-          <Button variant="ghost" size="sm" disabled={busy} onClick={onEdit}>
-            <Pencil /> Modifica
-          </Button>
-          <Button variant="ghost" size="sm" disabled={busy} onClick={onRemove}>
-            <Trash2 /> Rimuovi
-          </Button>
-        </div>
-      </CardContent>
+        </CardContent>
+      )}
     </Card>
   );
 }
