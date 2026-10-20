@@ -197,6 +197,7 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
 **Frontend (Static Site)**, Root Directory `frontend`
 - Build: `npm ci && npm run build` · Publish directory: `dist`
 - Env: `VITE_API_URL` (letta in fase di build: dopo una modifica serve un nuovo deploy)
+- Redirects/Rewrites: `/*` → `/index.html` (Rewrite), altrimenti ricaricando una pagina interna si ottiene 404
 
 ## Note di progetto
 
