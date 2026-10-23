@@ -112,6 +112,27 @@ export function CatalogPage() {
     }
   }
 
+  function adminActions(item: EquipmentItem, className?: string) {
+    return (
+      <div className={cn("flex justify-end", className)}>
+        <Button variant="ghost" size="icon" title="Modifica" onClick={() => setEditing(item)}>
+          <Pencil />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          title={item.isArchived ? "Ripristina" : "Archivia (dismesso)"}
+          onClick={() => void toggleArchived(item)}
+        >
+          {item.isArchived ? <ArchiveRestore /> : <Archive />}
+        </Button>
+        <Button variant="ghost" size="icon" title="Elimina" onClick={() => setDeleting(item)}>
+          <Trash2 />
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -229,7 +250,28 @@ export function CatalogPage() {
               ))}
             </div>
           ) : (
-            <div className="rounded-xl border">
+            <>
+            {/* Su schermi stretti righe compatte al posto della tabella */}
+            <div className="divide-y rounded-xl border md:hidden">
+              {visible.map((item) => (
+                <div key={item.id} className={cn("flex items-center gap-3 p-2", item.isArchived && "opacity-60")}>
+                  <ItemThumbnail item={item} className="size-12" />
+                  <div className="grid min-w-0 flex-1 gap-0.5">
+                    <div className="text-xs text-muted-foreground uppercase">{CATEGORY_LABELS[item.category]}</div>
+                    <div className="truncate">
+                      <span className="font-medium">{item.brand}</span> {item.model}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {item.size ? `${item.size} · ` : ""}
+                      <span className="font-mono">{item.serialNumber}</span>
+                    </div>
+                    <StatusBadge item={item} />
+                  </div>
+                  {isAdmin && adminActions(item, "flex-col")}
+                </div>
+              ))}
+            </div>
+            <div className="hidden rounded-xl border md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -259,27 +301,7 @@ export function CatalogPage() {
                       </TableCell>
                       {isAdmin && (
                         <TableCell>
-                          <div className="flex justify-end">
-                            <Button variant="ghost" size="icon" title="Modifica" onClick={() => setEditing(item)}>
-                              <Pencil />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title={item.isArchived ? "Ripristina" : "Archivia (dismesso)"}
-                              onClick={() => void toggleArchived(item)}
-                            >
-                              {item.isArchived ? <ArchiveRestore /> : <Archive />}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Elimina"
-                              onClick={() => setDeleting(item)}
-                            >
-                              <Trash2 />
-                            </Button>
-                          </div>
+                          {adminActions(item)}
                         </TableCell>
                       )}
                     </TableRow>
@@ -287,6 +309,7 @@ export function CatalogPage() {
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
         </>
       )}

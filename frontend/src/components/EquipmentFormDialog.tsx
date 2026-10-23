@@ -74,7 +74,7 @@ export function EquipmentFormDialog({
 
   return (
     <Dialog open={editing !== undefined} onOpenChange={(open) => !open && close()}>
-      <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{isNew ? "Nuovo pezzo" : "Modifica pezzo"}</DialogTitle>
           <DialogDescription>

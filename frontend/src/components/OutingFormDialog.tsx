@@ -81,7 +81,7 @@ export function OutingFormDialog({
 
   return (
     <Dialog open={editing !== undefined} onOpenChange={(open) => !open && close()}>
-      <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{isNew ? "Nuova uscita" : "Modifica uscita"}</DialogTitle>
           <DialogDescription>

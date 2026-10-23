@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import { api, getErrorMessage } from "@/lib/api";
 import type { Role, User } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 /** `undefined` = dialog chiuso, `null` = nuovo utente, `User` = modifica. */
 type Editing = User | null | undefined;
@@ -72,7 +73,36 @@ export function UsersPage() {
       {loading ? (
         <Loader2 className="mx-auto size-6 animate-spin text-muted-foreground" />
       ) : (
-        <div className="rounded-xl border">
+        <>
+        {/* Su schermi stretti una scheda per utente al posto della tabella */}
+        <div className="divide-y rounded-xl border md:hidden">
+          {users.map((user) => (
+            <div key={user.id} className={cn("flex items-start gap-2 p-3", !user.isActive && "opacity-60")}>
+              <div className="grid min-w-0 flex-1 gap-1">
+                <div className="font-medium">
+                  {user.lastName} {user.firstName}
+                </div>
+                <div className="truncate text-sm text-muted-foreground">{user.email}</div>
+                {user.phone && <div className="text-sm text-muted-foreground">{user.phone}</div>}
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant={user.role === "MEMBER" ? "outline" : "secondary"}>{ROLE_LABELS[user.role]}</Badge>
+                  {!user.isActive && <span className="text-muted-foreground">Disattivato</span>}
+                </div>
+              </div>
+              <div className="flex">
+                <Button variant="ghost" size="icon" title="Modifica" onClick={() => setEditing(user)}>
+                  <Pencil />
+                </Button>
+                {user.id !== currentUser.id && (
+                  <Button variant="ghost" size="icon" title="Elimina" onClick={() => setDeleting(user)}>
+                    <Trash2 />
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden rounded-xl border md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -115,6 +145,7 @@ export function UsersPage() {
             </TableBody>
           </Table>
         </div>
+        </>
       )}
 
       <UserFormDialog

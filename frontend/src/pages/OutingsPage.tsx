@@ -116,7 +116,7 @@ export function OutingsPage() {
                       {outing.vanSeats ? `/${outing.vanSeats}` : ""} sul furgone
                     </span>
                   </div>
-                  <div className="flex items-end justify-between gap-2 text-sm">
+                  <div className="flex flex-wrap items-end justify-between gap-x-2 gap-y-1 text-sm">
                     <span className="text-muted-foreground">
                       Resp. {outing.instructor.firstName} {outing.instructor.lastName}
                     </span>

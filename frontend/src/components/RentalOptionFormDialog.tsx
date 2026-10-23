@@ -72,7 +72,7 @@ export function RentalOptionFormDialog({
 
   return (
     <Dialog open={editing !== undefined} onOpenChange={(open) => !open && close()}>
-      <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{isNew ? "Nuova voce di listino" : "Modifica voce di listino"}</DialogTitle>
           <DialogDescription>
