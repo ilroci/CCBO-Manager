@@ -5,6 +5,7 @@ import { calendarDays, dateSchema, formatDate, parseDate, todayInItaly } from ".
 import { badRequest, HttpError, notFound } from "../lib/http-error";
 import {
   assertVanSeats,
+  chargedDaysOf,
   outingInclude,
   quoteParticipant,
   SERVICE_CATEGORY,
@@ -212,20 +213,30 @@ const participantSchema = z.object({
   optionIds: idList.default([]),
   /** Passo 1, dettaglio facoltativo — pezzi specifici assegnati, nelle categorie delle voci scelte. */
   itemIds: idList.default([]),
+  /** Passo 1 — giorni di noleggio per chi partecipa solo a una parte dell'uscita; null = tutta l'uscita. */
+  rentalDays: z.number().int().min(1).max(MAX_RENTAL_DAYS).nullish(),
   /** Passo 2 — A) furgone, B) solo trasporto attrezzatura, C) autonomo: una sola scelta. */
   travelMode: z.enum(TravelMode),
 });
 
 const quoteSchema = participantSchema.omit({ memberId: true });
 
+function assertRentalDays(outing: LoadedOuting, days: number | null | undefined) {
+  const outingDays = calendarDays(outing.startDate, outing.endDate);
+  if (days != null && days > outingDays) {
+    throw badRequest(`I giorni di noleggio non possono superare quelli dell'uscita (${outingDays})`);
+  }
+}
+
 /** POST /api/outings/:id/quote — riepilogo del wizard: quota individuale senza salvare. */
 outingsRouter.post("/:id/quote", async (req, res) => {
   const { id } = idParams.parse(req.params);
-  const { optionIds, itemIds, travelMode } = quoteSchema.parse(req.body);
+  const { optionIds, itemIds, rentalDays, travelMode } = quoteSchema.parse(req.body);
   const outing = await loadOuting(id);
-  const quote = await quoteParticipant(prisma, outing, { optionIds, itemIds }, travelMode);
+  assertRentalDays(outing, rentalDays);
+  const quote = await quoteParticipant(prisma, outing, { optionIds, itemIds, days: rentalDays }, travelMode);
   res.json({
-    days: calendarDays(outing.startDate, outing.endDate),
+    days: chargedDaysOf(rentalDays ?? null, calendarDays(outing.startDate, outing.endDate)),
     charges: (quote.rental?.charges ?? []).map((c) => ({
       ...c,
       dailyPrice: c.dailyPrice.toFixed(2),
@@ -241,8 +252,9 @@ outingsRouter.post("/:id/quote", async (req, res) => {
 /** POST /api/outings/:id/participants — aggiunge un socio con noleggio e modalità di viaggio. */
 outingsRouter.post("/:id/participants", async (req, res) => {
   const { id } = idParams.parse(req.params);
-  const { memberId, optionIds, itemIds, travelMode } = participantSchema.parse(req.body);
+  const { memberId, optionIds, itemIds, rentalDays, travelMode } = participantSchema.parse(req.body);
   const outing = await loadOuting(id);
+  assertRentalDays(outing, rentalDays);
 
   const member = await prisma.user.findUnique({ where: { id: memberId } });
   if (!member || !member.isActive) throw badRequest("Socio non trovato o disattivato");
@@ -253,7 +265,7 @@ outingsRouter.post("/:id/participants", async (req, res) => {
   await prisma.$transaction(async (tx) => {
     const participant = await tx.outingParticipant.create({ data: { outingId: id, memberId, travelMode } });
     await assertVanSeats(tx, id, outing.vanSeats);
-    await syncParticipant(tx, outing, participant, { spec: { optionIds, itemIds } });
+    await syncParticipant(tx, outing, participant, { spec: { optionIds, itemIds, days: rentalDays ?? null } });
   });
   await respond(res, id, 201);
 });
@@ -266,6 +278,7 @@ outingsRouter.post("/:id/participants", async (req, res) => {
 const updateParticipantSchema = z.object({
   optionIds: idList.optional(),
   itemIds: idList.optional(),
+  rentalDays: z.number().int().min(1).max(MAX_RENTAL_DAYS).nullish(),
   travelMode: z.enum(TravelMode).optional(),
 });
 
@@ -277,9 +290,11 @@ function findParticipant(outing: LoadedOuting, pid: string) {
 
 outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
-  const { optionIds, itemIds, travelMode } = updateParticipantSchema.parse(req.body);
+  const { optionIds, itemIds, rentalDays, travelMode } = updateParticipantSchema.parse(req.body);
   const outing = await loadOuting(id);
   const participant = findParticipant(outing, pid);
+  assertRentalDays(outing, rentalDays);
+  const outingDays = calendarDays(outing.startDate, outing.endDate);
 
   const paid = new Set(participant.payments.map((pay) => pay.category));
   const currentOptions = participant.rental?.charges.map((c) => c.optionId ?? "") ?? [];
@@ -287,12 +302,19 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
   const optionsChanged =
     optionIds !== undefined &&
     (optionIds.length !== currentOptions.length || optionIds.some((o) => !currentOptions.includes(o)));
+  const daysChanged =
+    rentalDays !== undefined &&
+    participant.rental !== null &&
+    chargedDaysOf(rentalDays, outingDays) !== chargedDaysOf(participant.rental.chargedDays, outingDays);
   const modeChanged = travelMode !== undefined && travelMode !== participant.travelMode;
 
   // Una voce riscossa non cambia: prima si annulla la riscossione. Il materiale specifico
   // invece si può cambiare anche a noleggio riscosso, perché non incide sul prezzo.
   if (optionsChanged && paid.has(CollectionCategory.RENTAL)) {
     throw new HttpError(409, "Noleggio già riscosso: annulla la riscossione prima di cambiare le voci noleggiate");
+  }
+  if (daysChanged && paid.has(CollectionCategory.RENTAL)) {
+    throw new HttpError(409, "Noleggio già riscosso: annulla la riscossione prima di cambiare i giorni di noleggio");
   }
   const currentService = SERVICE_CATEGORY[participant.travelMode];
   if (modeChanged && currentService && paid.has(currentService)) {
@@ -309,13 +331,13 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
       await tx.outingParticipant.update({ where: { id: pid }, data: { travelMode } });
       await assertVanSeats(tx, id, outing.vanSeats);
     }
-    const rentalTouched = optionIds !== undefined || itemIds !== undefined;
+    const rentalTouched = optionIds !== undefined || itemIds !== undefined || rentalDays !== undefined;
     await syncParticipant(
       tx,
       outing,
       { id: pid, memberId: participant.memberId, travelMode: travelMode ?? participant.travelMode },
       rentalTouched
-        ? { spec: { optionIds: optionIds ?? currentOptions, itemIds: itemIds ?? currentItems } }
+        ? { spec: { optionIds: optionIds ?? currentOptions, itemIds: itemIds ?? currentItems, days: rentalDays } }
         : {},
     );
   });

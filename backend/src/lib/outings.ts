@@ -37,11 +37,26 @@ export async function serviceAmounts(db: Db, travelMode: TravelMode) {
 /**
  * Noleggio di un partecipante: le voci di listino scelte (vista rapida, determinano il prezzo)
  * e, facoltativamente, i pezzi specifici assegnati (vista di dettaglio, bloccano la disponibilità).
+ * `days`: giorni addebitati a chi partecipa solo a una parte dell'uscita; null = tutta l'uscita,
+ * assente = invariati.
  */
 export interface RentalSpec {
   optionIds: string[];
   itemIds: string[];
+  days?: number | null;
 }
+
+/**
+ * Giorni da salvare come `chargedDays`: null quando coprono tutta l'uscita, così il noleggio
+ * segue le date se l'uscita si allunga. Se l'uscita si accorcia, non si superano i suoi giorni.
+ */
+export function normalizeChargedDays(days: number | null | undefined, outingDays: number) {
+  return days == null || days >= outingDays ? null : days;
+}
+
+/** Giorni addebitati del noleggio di uscita. */
+export const chargedDaysOf = (chargedDays: number | null, outingDays: number) =>
+  normalizeChargedDays(chargedDays, outingDays) ?? outingDays;
 
 /** Verifica voci e pezzi: i pezzi devono rientrare nelle categorie delle voci scelte. */
 async function resolveRentalSpec(db: Db, spec: RentalSpec) {
@@ -69,7 +84,7 @@ async function resolveRentalSpec(db: Db, spec: RentalSpec) {
 
 /**
  * Quota individuale di un partecipante, senza salvare nulla (riepilogo del wizard):
- * (1) noleggio = voci di listino scelte × giorni dell'uscita;
+ * (1) noleggio = voci di listino scelte × giorni di noleggio (di default tutta l'uscita);
  * (2) solo trasporto attrezzatura = tariffa fissa per uscita;
  * (3) quota furgone = tariffa fissa per uscita, più i costi vivi che non hanno importo.
  */
@@ -80,9 +95,8 @@ export async function quoteParticipant(
   travelMode: TravelMode,
 ) {
   const resolved = await resolveRentalSpec(db, spec);
-  const rental = resolved
-    ? chargesForOptions(resolved.options, calendarDays(outing.startDate, outing.endDate))
-    : null;
+  const days = chargedDaysOf(spec.days ?? null, calendarDays(outing.startDate, outing.endDate));
+  const rental = resolved ? chargesForOptions(resolved.options, days) : null;
   const rentalAmount = rental?.total ?? ZERO;
   const services = await serviceAmounts(db, travelMode);
   return {
@@ -97,10 +111,12 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((
 
 /**
  * Salva noleggio e quote di un partecipante.
- * - `spec`: voci e pezzi scelti nel wizard. Le voci si riprezzano col listino attuale solo se
- *   cambiano; i pezzi si possono cambiare senza toccare il prezzo (anche a noleggio riscosso).
- *   Pezzi diversi tornano "da far rientrare".
- * - `datesChanged`: stesse voci, prezzo giornaliero già applicato × nuovi giorni.
+ * - `spec`: voci, pezzi e giorni scelti nel wizard. Le voci si riprezzano col listino attuale solo
+ *   se cambiano; se cambiano solo i giorni vale il prezzo giornaliero già applicato. I pezzi si
+ *   possono cambiare senza toccare il prezzo (anche a noleggio riscosso): pezzi diversi tornano
+ *   "da far rientrare". Il materiale resta impegnato per tutte le date dell'uscita.
+ * - `datesChanged`: stesse voci, prezzo giornaliero già applicato × nuovi giorni (i giorni
+ *   ridotti restano tali, ma non oltre la durata dell'uscita).
  * - nessuno dei due: il noleggio resta com'è (es. cambio di sola modalità di viaggio).
  * Quota furgone / trasporto e totale si ricalcolano sempre dalla modalità di viaggio.
  */
@@ -111,7 +127,7 @@ export async function syncParticipant(
   change: { spec?: RentalSpec; datesChanged?: boolean } = {},
 ) {
   const { startDate, endDate } = outing;
-  const days = calendarDays(startDate, endDate);
+  const outingDays = calendarDays(startDate, endDate);
   const existing = await tx.rental.findUnique({
     where: { participantId: participant.id },
     include: { items: true, charges: true },
@@ -124,6 +140,11 @@ export async function syncParticipant(
     } else {
       const itemIds = change.spec.itemIds;
       if (itemIds.length > 0) await lockAndAssertAvailable(tx, itemIds, startDate, endDate, existing?.id);
+      const chargedDays = normalizeChargedDays(
+        change.spec.days !== undefined ? change.spec.days : existing?.chargedDays,
+        outingDays,
+      );
+      const days = chargedDays ?? outingDays;
 
       if (!existing) {
         const { charges, total } = chargesForOptions(resolved.options, days);
@@ -134,6 +155,7 @@ export async function syncParticipant(
             participantId: participant.id,
             startDate,
             endDate,
+            chargedDays,
             total,
             items: { create: itemIds.map((itemId) => ({ itemId })) },
             charges: { create: charges },
@@ -151,7 +173,12 @@ export async function syncParticipant(
         if (optionsChanged) {
           const { charges, total } = chargesForOptions(resolved.options, days);
           await tx.rentalCharge.deleteMany({ where: { rentalId: existing.id } });
-          await tx.rental.update({ where: { id: existing.id }, data: { total, charges: { create: charges } } });
+          await tx.rental.update({
+            where: { id: existing.id },
+            data: { chargedDays, total, charges: { create: charges } },
+          });
+        } else if (days !== chargedDaysOf(existing.chargedDays, outingDays)) {
+          await repriceDays(tx, existing, chargedDays, days);
         }
         if (itemsChanged) {
           await tx.rentalItem.deleteMany({ where: { rentalId: existing.id } });
@@ -165,13 +192,9 @@ export async function syncParticipant(
   } else if (change.datesChanged && existing) {
     const itemIds = existing.items.map((row) => row.itemId);
     if (itemIds.length > 0) await lockAndAssertAvailable(tx, itemIds, startDate, endDate, existing.id);
-    let total = ZERO;
-    for (const charge of existing.charges) {
-      const amount = charge.dailyPrice.mul(days);
-      total = total.add(amount);
-      await tx.rentalCharge.update({ where: { id: charge.id }, data: { days, amount } });
-    }
-    await tx.rental.update({ where: { id: existing.id }, data: { startDate, endDate, total } });
+    const chargedDays = normalizeChargedDays(existing.chargedDays, outingDays);
+    await tx.rental.update({ where: { id: existing.id }, data: { startDate, endDate } });
+    await repriceDays(tx, existing, chargedDays, chargedDays ?? outingDays);
   }
 
   const rental = await tx.rental.findUnique({ where: { participantId: participant.id }, select: { total: true } });
@@ -185,6 +208,22 @@ export async function syncParticipant(
       totalAmount: rentalAmount.add(services.transportAmount).add(services.vanSeatAmount),
     },
   });
+}
+
+/** Stesse voci, prezzo giornaliero già applicato × nuovi giorni. */
+async function repriceDays(
+  tx: Db,
+  rental: { id: string; charges: { id: string; dailyPrice: Prisma.Decimal }[] },
+  chargedDays: number | null,
+  days: number,
+) {
+  let total = ZERO;
+  for (const charge of rental.charges) {
+    const amount = charge.dailyPrice.mul(days);
+    total = total.add(amount);
+    await tx.rentalCharge.update({ where: { id: charge.id }, data: { days, amount } });
+  }
+  await tx.rental.update({ where: { id: rental.id }, data: { chargedDays, total } });
 }
 
 /** Se l'uscita ha un numero di posti sul furgone, i partecipanti a bordo non possono superarlo. */
@@ -268,6 +307,8 @@ export function toOutingDto(outing: OutingWithRelations) {
     rental: p.rental && {
       id: p.rental.id,
       status: p.rental.status,
+      /** Giorni addebitati: meno di quelli dell'uscita se il socio partecipa solo in parte. */
+      days: chargedDaysOf(p.rental.chargedDays, calendarDays(outing.startDate, outing.endDate)),
       total: money(p.rental.total),
       items: p.rental.items.map(({ item, ...row }) => ({ ...row, item: toItemDto(item) })),
       charges: p.rental.charges.map((c) => ({ ...c, dailyPrice: money(c.dailyPrice), amount: money(c.amount) })),

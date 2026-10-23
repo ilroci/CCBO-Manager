@@ -181,7 +181,7 @@ function CollectionRow({
             </div>
             )}
             <div className="text-xs text-muted-foreground">
-              {p.rental.charges.map((ch) => `${ch.name} ${formatEuro(ch.dailyPrice)} × ${ch.days}`).join(" · ")}
+              {p.rental.charges.map((ch) => `${ch.name} ${formatEuro(ch.dailyPrice)} × ${ch.days} ${ch.days === 1 ? "giorno" : "giorni"}`).join(" · ")}
             </div>
           </>
         )}

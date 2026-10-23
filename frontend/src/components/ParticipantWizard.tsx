@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatPeriod } from "@/lib/dates";
 import { CATEGORY_LABELS } from "@/lib/equipment";
@@ -57,6 +58,8 @@ export function ParticipantWizard({
   /** Vista di dettaglio, facoltativa: pezzi specifici assegnati. */
   const [showDetail, setShowDetail] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  /** Giorni di noleggio per chi partecipa solo a una parte dell'uscita; null = tutta l'uscita. */
+  const [rentalDays, setRentalDays] = useState<number | null>(null);
   const [travelMode, setTravelMode] = useState<TravelMode>();
   const [quote, setQuote] = useState<ParticipantQuote>();
   const { options, vanSeatFee, transportFee } = usePriceList();
@@ -76,6 +79,7 @@ export function ParticipantWizard({
       setOptionIds(new Set(target.rental?.charges.flatMap((c) => (c.optionId ? [c.optionId] : [])) ?? []));
       setSelected(new Set(target.rental?.items.map((row) => row.item.id) ?? []));
       setShowDetail(Boolean(target.rental?.items.length));
+      setRentalDays(target.rental && target.rental.days < outing.days ? target.rental.days : null);
       setTravelMode(target.travelMode);
     } else {
       setStep(0);
@@ -84,6 +88,7 @@ export function ParticipantWizard({
       setOptionIds(new Set());
       setSelected(new Set());
       setShowDetail(false);
+      setRentalDays(null);
       setTravelMode(undefined);
       api
         .get<{ users: User[] }>("/api/users", { params: { active: "true" } })
@@ -117,7 +122,12 @@ export function ParticipantWizard({
     if (step !== 3) return;
     setQuote(undefined);
     api
-      .post<ParticipantQuote>(`/api/outings/${outing.id}/quote`, { optionIds: chosenOptions, itemIds, travelMode })
+      .post<ParticipantQuote>(`/api/outings/${outing.id}/quote`, {
+        optionIds: chosenOptions,
+        itemIds,
+        rentalDays: wantsRental ? rentalDays : null,
+        travelMode,
+      })
       .then(({ data }) => setQuote(data))
       .catch((err) => setError(getErrorMessage(err)));
   }, [step]);
@@ -175,7 +185,7 @@ export function ParticipantWizard({
       const { data } = isEdit
         ? await api.patch<{ outing: Outing }>(`/api/outings/${outing.id}/participants/${target!.id}`, {
             // A noleggio riscosso le voci non cambiano; il materiale specifico sì.
-            ...(rentalLocked ? {} : { optionIds: chosenOptions }),
+            ...(rentalLocked ? {} : { optionIds: chosenOptions, rentalDays: wantsRental ? rentalDays : null }),
             itemIds,
             travelMode,
           })
@@ -183,6 +193,7 @@ export function ParticipantWizard({
             memberId,
             optionIds: chosenOptions,
             itemIds,
+            rentalDays: wantsRental ? rentalDays : null,
             travelMode,
           });
       onSaved(data.outing);
@@ -357,6 +368,32 @@ export function ParticipantWizard({
                   </div>
                 </div>
 
+                {optionIds.size > 0 && outing.days > 1 && (
+                  <div className="grid gap-2">
+                    <label htmlFor="rental-days" className="text-sm font-medium">
+                      Per quanti giorni noleggia?
+                    </label>
+                    <NativeSelect
+                      id="rental-days"
+                      disabled={rentalLocked}
+                      value={rentalDays ?? ""}
+                      onChange={(e) => setRentalDays(e.target.value ? Number(e.target.value) : null)}
+                      className="sm:w-72"
+                    >
+                      <option value="">Tutta l'uscita ({outing.days} giorni)</option>
+                      {Array.from({ length: outing.days - 1 }, (_, i) => i + 1).map((days) => (
+                        <option key={days} value={days}>
+                          {days} {days === 1 ? "giorno" : "giorni"}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                    <p className="text-xs text-muted-foreground">
+                      Se il socio partecipa solo ad alcuni giorni paga il noleggio per quei giorni; l'eventuale
+                      materiale assegnato resta comunque occupato per tutta l'uscita.
+                    </p>
+                  </div>
+                )}
+
                 {optionIds.size > 0 && (
                   <div className="grid gap-3 rounded-lg border p-3">
                     <button
@@ -453,7 +490,15 @@ export function ParticipantWizard({
         {step === 3 && (
           <div className="grid gap-4 text-sm">
             <div className="grid gap-1">
-              <div className="font-medium">Noleggio attrezzatura</div>
+              <div className="font-medium">
+                Noleggio attrezzatura
+                {chosenOptions.length > 0 && quote && (
+                  <span className="font-normal text-muted-foreground">
+                    {" "}
+                    · {quote.days < outing.days ? `${quote.days} ${quote.days === 1 ? "giorno" : "giorni"} su ${outing.days}` : "tutta l'uscita"}
+                  </span>
+                )}
+              </div>
               {chosenOptions.length === 0 ? (
                 <div className="text-muted-foreground">Nessun noleggio</div>
               ) : selectedItems.length === 0 ? (

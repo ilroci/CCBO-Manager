@@ -197,6 +197,9 @@ model Rental {
   startDate DateTime     @db.Date
   /// Ultimo giorno di noleggio (incluso)
   endDate   DateTime     @db.Date
+  /// Solo kind = OUTING: giorni addebitati a chi partecipa a una parte dell'uscita
+  /// (null = tutta l'uscita). Le date restano quelle dell'uscita, il materiale è impegnato comunque.
+  chargedDays Int?
   /// Totale calcolato (somma delle voci addebitate), congelato alla conferma
   total     Decimal      @default(0) @db.Decimal(10, 2)
   notes     String?

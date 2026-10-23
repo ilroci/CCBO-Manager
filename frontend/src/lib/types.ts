@@ -118,6 +118,8 @@ export interface OutingParticipant {
   rental: {
     id: string;
     status: RentalStatus;
+    /** Giorni addebitati: meno di quelli dell'uscita se il socio partecipa solo in parte. */
+    days: number;
     total: string;
     items: { id: string; itemId: string; returnedAt: string | null; item: EquipmentItem }[];
     charges: RentalCharge[];
