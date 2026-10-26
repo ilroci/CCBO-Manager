@@ -200,8 +200,9 @@ function UserFormDialog({
       firstName: text("firstName"),
       lastName: text("lastName"),
       phone: text("phone") || null,
+      email: text("email"),
       role: text("role") as Role,
-      ...(isNew ? { email: text("email") } : { isActive: form.get("isActive") === "on" }),
+      ...(isNew ? {} : { isActive: form.get("isActive") === "on" }),
       ...(password ? { password } : {}),
     };
 
@@ -247,12 +248,11 @@ function UserFormDialog({
               <Input id="lastName" name="lastName" required defaultValue={editing?.lastName} />
             </div>
           </div>
-          {isNew && (
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" required autoComplete="off" />
-            </div>
-          )}
+          <div className="grid gap-2">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" name="email" type="email" required autoComplete="off" defaultValue={editing?.email} />
+            {!isNew && <p className="text-xs text-muted-foreground">È anche l'indirizzo con cui l'utente accede.</p>}
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="phone">Telefono</Label>
