@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { CircleCheck, Loader2, PackageCheck, PackageOpen, Plus, X } from "lucide-react";
-import { useCurrentUser } from "@/auth/AuthContext";
+import { useCanEdit, useCurrentUser } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FormError } from "@/components/FormError";
 import { ItemThumbnail } from "@/components/ItemThumbnail";
@@ -30,6 +30,7 @@ const STATUS_FILTERS: { value: RentalStatus | "ALL"; label: string }[] = [
 export function MyRentalsPage() {
   const user = useCurrentUser();
   const isStaff = user.role === "ADMIN" || user.role === "INSTRUCTOR";
+  const canEdit = useCanEdit();
   const location = useLocation();
   const createdId = (location.state as { created?: string } | null)?.created;
 
@@ -84,11 +85,13 @@ export function MyRentalsPage() {
               : "Le tue prenotazioni e lo storico dei noleggi."}
           </p>
         </div>
-        <Button asChild>
-          <Link to="/my-rentals/new">
-            <Plus /> Nuova prenotazione
-          </Link>
-        </Button>
+        {canEdit && (
+          <Button asChild>
+            <Link to="/my-rentals/new">
+              <Plus /> Nuova prenotazione
+            </Link>
+          </Button>
+        )}
       </div>
 
       {createdId && (
@@ -140,9 +143,11 @@ export function MyRentalsPage() {
       ) : rentals.length === 0 ? (
         <div className="rounded-xl border border-dashed py-16 text-center text-muted-foreground">
           Nessun noleggio.{" "}
-          <Link to="/my-rentals/new" className="text-primary underline-offset-4 hover:underline">
-            Prenota l'attrezzatura
-          </Link>
+          {canEdit && (
+            <Link to="/my-rentals/new" className="text-primary underline-offset-4 hover:underline">
+              Prenota l'attrezzatura
+            </Link>
+          )}
         </div>
       ) : (
         <div className="grid gap-4">
@@ -200,6 +205,7 @@ export function MyRentalsPage() {
                         .join(" · ")}
                       {rental.notes && <div className="mt-1 italic">“{rental.notes}”</div>}
                     </div>
+                    {canEdit && (
                     <div className="flex gap-2">
                       {canCancel && (
                         <Button variant="outline" size="sm" disabled={busy} onClick={() => setCancelling(rental)}>
@@ -217,6 +223,7 @@ export function MyRentalsPage() {
                         </Button>
                       )}
                     </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

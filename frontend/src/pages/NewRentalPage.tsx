@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { useCanEdit } from "@/auth/AuthContext";
 import { ArrowLeft, Loader2, X } from "lucide-react";
 import { FormError } from "@/components/FormError";
 import { ItemPicker } from "@/components/ItemPicker";
@@ -16,6 +17,7 @@ import type { AvailableItem, Rental, RentalQuote } from "@/lib/types";
 
 export function NewRentalPage() {
   const navigate = useNavigate();
+  const canEdit = useCanEdit();
   const [searchParams] = useSearchParams();
   const today = todayIso();
 
@@ -118,6 +120,8 @@ export function NewRentalPage() {
       setSubmitting(false);
     }
   }
+
+  if (!canEdit) return <Navigate to="/my-rentals" replace />;
 
   return (
     <div className="grid gap-6">

@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 export function ParticipantCard({
   participant: p,
   busy,
+  readOnly = false,
   onEdit,
   onRemove,
   onCollect,
@@ -24,6 +25,8 @@ export function ParticipantCard({
 }: {
   participant: OutingParticipant;
   busy: boolean;
+  /** Sola consultazione: niente pulsanti di modifica, riscossione o rientro. */
+  readOnly?: boolean;
   onEdit: () => void;
   onRemove: () => void;
   onCollect: (category: CollectionCategory, paid: boolean) => void;
@@ -108,12 +111,14 @@ export function ParticipantCard({
                   collection={c}
                   participant={p}
                   busy={busy}
+                  readOnly={readOnly}
                   onCollect={(paid) => onCollect(c.category, paid)}
                 />
               ))}
             </div>
           )}
 
+          {!readOnly && (
           <div className="flex flex-wrap items-center justify-end gap-2">
             {hasItems && p.rental?.status === "RESERVED" && (
               <Button variant="outline" size="sm" disabled={busy} onClick={() => onReturn(true)}>
@@ -132,6 +137,7 @@ export function ParticipantCard({
               <Trash2 /> Rimuovi
             </Button>
           </div>
+          )}
         </CardContent>
       )}
     </Card>
@@ -142,11 +148,13 @@ function CollectionRow({
   collection: c,
   participant: p,
   busy,
+  readOnly,
   onCollect,
 }: {
   collection: Collection;
   participant: OutingParticipant;
   busy: boolean;
+  readOnly: boolean;
   onCollect: (paid: boolean) => void;
 }) {
   const paid = c.payment !== null;
@@ -212,7 +220,7 @@ function CollectionRow({
           {formatEuro(c.amount)}
           {c.includesExpenses && <span className="font-normal text-muted-foreground"> + costi vivi</span>}
         </span>
-        {paid ? (
+        {readOnly ? null : paid ? (
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => onCollect(false)}>
             <Undo2 /> Annulla riscossione
           </Button>

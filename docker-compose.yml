@@ -34,6 +34,8 @@ services:
       FRONTEND_URL: http://localhost:5173
       JWT_SECRET: solo-per-sviluppo-locale-non-usare-in-produzione
       JWT_EXPIRES_IN: 8h
+      # Sola consultazione: ADMIN_ONLY_EDITS=true docker compose up → modifica solo l'amministratore
+      ADMIN_ONLY_EDITS: ${ADMIN_ONLY_EDITS:-false}
       # Le email (sezione Consigli) finiscono in Mailpit: http://localhost:8025
       SMTP_HOST: mailpit
       SMTP_PORT: 1025

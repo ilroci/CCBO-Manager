@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
-import type { Role } from "@prisma/client";
+import { Role } from "@prisma/client";
+import { env } from "../config/env";
 import { publicUserSelect, verifyAccessToken } from "../lib/auth";
 import { forbidden, unauthorized } from "../lib/http-error";
 import { prisma } from "../lib/prisma";
@@ -31,4 +32,21 @@ export function authorize(...roles: Role[]) {
     if (!roles.includes(req.user.role)) throw forbidden();
     next();
   };
+}
+
+const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * Modalità sola consultazione (`ADMIN_ONLY_EDITS`): ogni richiesta che modifica dati è
+ * riservata all'amministratore. Restano libere login, cambio password e il form Consigli.
+ * Va montato su /api prima dei router.
+ */
+export async function adminOnlyWrites(req: Request, res: Response, next: NextFunction) {
+  if (!env.adminOnlyEdits || READ_METHODS.has(req.method)) return next();
+  if (req.path.startsWith("/auth/") || req.path === "/suggestions") return next();
+  await authenticate(req, res, () => {});
+  if (req.user!.role !== Role.ADMIN) {
+    throw forbidden("Il sito è in sola consultazione: le modifiche sono riservate all'amministratore");
+  }
+  next();
 }

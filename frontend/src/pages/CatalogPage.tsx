@@ -13,7 +13,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useCurrentUser } from "@/auth/AuthContext";
+import { useCanEdit, useCurrentUser } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EquipmentFormDialog, type EquipmentEditing } from "@/components/EquipmentFormDialog";
 import { FormError } from "@/components/FormError";
@@ -42,6 +42,7 @@ type View = "grid" | "table";
 export function CatalogPage() {
   const user = useCurrentUser();
   const isAdmin = user.role === "ADMIN";
+  const canEdit = useCanEdit();
 
   const [items, setItems] = useState<EquipmentItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,11 +144,13 @@ export function CatalogPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant={isAdmin ? "outline" : "default"} asChild>
-            <Link to="/my-rentals/new">
-              <CalendarPlus /> Prenota
-            </Link>
-          </Button>
+          {canEdit && (
+            <Button variant={isAdmin ? "outline" : "default"} asChild>
+              <Link to="/my-rentals/new">
+                <CalendarPlus /> Prenota
+              </Link>
+            </Button>
+          )}
           {isAdmin && (
             <Button onClick={() => setEditing(null)}>
               <Plus /> Nuovo pezzo
@@ -380,6 +383,7 @@ function Count({ n }: { n: number }) {
 }
 
 function EquipmentCard({ item, onEdit }: { item: EquipmentItem; onEdit?: () => void }) {
+  const canBook = useCanEdit();
   const [photoFailed, setPhotoFailed] = useState(false);
   const showPhoto = item.photoUrl && !photoFailed;
 
@@ -421,6 +425,7 @@ function EquipmentCard({ item, onEdit }: { item: EquipmentItem; onEdit?: () => v
               <Pencil /> Modifica
             </Button>
           ) : (
+            canBook &&
             !item.isArchived && (
               <Button variant="ghost" size="sm" asChild>
                 <Link to={`/my-rentals/new?item=${item.id}`}>

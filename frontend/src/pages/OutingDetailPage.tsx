@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Ban, Loader2, MapPin, PackageCheck, Pencil, UserPlus } from "lucide-react";
+import { useCanEdit } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FormError } from "@/components/FormError";
 import { OutingFormDialog, type OutingEditing } from "@/components/OutingFormDialog";
@@ -20,6 +21,7 @@ type Confirm = { kind: "cancel" } | { kind: "remove"; participant: OutingPartici
 export function OutingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const canEdit = useCanEdit();
   const [outing, setOuting] = useState<Outing>();
   const [error, setError] = useState<string>();
   const [editing, setEditing] = useState<OutingEditing>(undefined);
@@ -130,14 +132,16 @@ export function OutingDetailPage() {
             </p>
             {outing.notes && <p className="mt-2 max-w-prose text-sm whitespace-pre-line">{outing.notes}</p>}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setConfirm({ kind: "cancel" })}>
-              <Ban /> Annulla uscita
-            </Button>
-            <Button variant="outline" onClick={() => setEditing(outing)}>
-              <Pencil /> Modifica dati
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setConfirm({ kind: "cancel" })}>
+                <Ban /> Annulla uscita
+              </Button>
+              <Button variant="outline" onClick={() => setEditing(outing)}>
+                <Pencil /> Modifica dati
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -171,6 +175,7 @@ export function OutingDetailPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Partecipanti</h2>
+        {canEdit && (
         <div className="flex flex-wrap gap-2">
           {outing.totals.toReturn > 0 && (
             <Button variant="outline" onClick={() => void returnAll()}>
@@ -181,11 +186,12 @@ export function OutingDetailPage() {
             <UserPlus /> Aggiungi socio
           </Button>
         </div>
+        )}
       </div>
 
       {outing.participants.length === 0 ? (
         <p className="rounded-xl border border-dashed py-12 text-center text-muted-foreground">
-          Nessun partecipante: aggiungi i soci con il pulsante qui sopra.
+          {canEdit ? "Nessun partecipante: aggiungi i soci con il pulsante qui sopra." : "Nessun partecipante."}
         </p>
       ) : (
         <div className="grid gap-3">
@@ -194,6 +200,7 @@ export function OutingDetailPage() {
               key={p.id}
               participant={p}
               busy={busyId === p.id}
+              readOnly={!canEdit}
               onEdit={() => setWizard(p)}
               onRemove={() => setConfirm({ kind: "remove", participant: p })}
               onCollect={(category, paid) => void participantAction(p, `payments/${category}`, { paid })}

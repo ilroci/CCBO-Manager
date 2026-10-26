@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Dialog as DialogPrimitive } from "radix-ui";
-import { KeyRound, LogOut, Menu, Waves, X } from "lucide-react";
-import { useAuth, useCurrentUser } from "@/auth/AuthContext";
+import { Eye, KeyRound, LogOut, Menu, Waves, X } from "lucide-react";
+import { useAuth, useCanEdit, useCurrentUser } from "@/auth/AuthContext";
 import { navItemsFor, ROLE_LABELS, type NavItem } from "@/auth/permissions";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ export function AppLayout() {
   const user = useCurrentUser();
   const { logout } = useAuth();
   const items = navItemsFor(user.role);
+  const canEdit = useCanEdit();
 
   return (
     <div className="min-h-svh">
@@ -48,6 +49,11 @@ export function AppLayout() {
         </nav>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
+        {!canEdit && (
+          <div className="mb-6 flex items-center gap-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200">
+            <Eye className="size-4 shrink-0" /> Sito in sola consultazione: per ora le modifiche sono riservate all'amministratore.
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

@@ -7,6 +7,7 @@ import {
   signAccessToken,
   verifyPassword,
 } from "../lib/auth";
+import { env } from "../config/env";
 import { badRequest, unauthorized } from "../lib/http-error";
 import { prisma } from "../lib/prisma";
 import { authenticate } from "../middleware/auth";
@@ -19,7 +20,7 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-/** POST /api/auth/login → { token, user } */
+/** POST /api/auth/login → { token, user, adminOnlyEdits } */
 authRouter.post("/login", async (req, res) => {
   const { email, password } = loginSchema.parse(req.body);
 
@@ -29,12 +30,12 @@ authRouter.post("/login", async (req, res) => {
   if (!user || !valid || !user.isActive) throw unauthorized("Email o password non corretti");
 
   const { passwordHash: _omit, ...publicUser } = user;
-  res.json({ token: signAccessToken(user), user: publicUser });
+  res.json({ token: signAccessToken(user), user: publicUser, adminOnlyEdits: env.adminOnlyEdits });
 });
 
-/** GET /api/auth/me → utente corrente */
+/** GET /api/auth/me → utente corrente e modalità sola consultazione */
 authRouter.get("/me", authenticate, (req, res) => {
-  res.json({ user: req.user });
+  res.json({ user: req.user, adminOnlyEdits: env.adminOnlyEdits });
 });
 
 const changePasswordSchema = z.object({

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Bus, Loader2, MapPin, Plus, Users } from "lucide-react";
+import { useCanEdit } from "@/auth/AuthContext";
 import { FormError } from "@/components/FormError";
 import { OutingFormDialog, type OutingEditing } from "@/components/OutingFormDialog";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ const WHEN_OPTIONS: { value: When; label: string }[] = [
 
 export function OutingsPage() {
   const navigate = useNavigate();
+  const canEdit = useCanEdit();
   const [when, setWhen] = useState<When>("all");
   const [outings, setOutings] = useState<Outing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,9 +55,11 @@ export function OutingsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Uscite</h1>
           <p className="text-muted-foreground">Uscite di club: partecipanti, attrezzatura, rientri e incassi.</p>
         </div>
-        <Button onClick={() => setEditing(null)}>
-          <Plus /> Nuova uscita
-        </Button>
+        {canEdit && (
+          <Button onClick={() => setEditing(null)}>
+            <Plus /> Nuova uscita
+          </Button>
+        )}
       </div>
 
       <div className="flex gap-1.5 overflow-x-auto">

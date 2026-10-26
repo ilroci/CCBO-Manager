@@ -28,6 +28,12 @@ export const env = {
   jwtSecret: jwtSecret(),
   /** Durata del token di accesso (formato `ms`: "8h", "7d", ...). */
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "8h",
+  /**
+   * Sola consultazione: con ADMIN_ONLY_EDITS=true solo l'amministratore può modificare dati;
+   * istruttori e soci vedono ma non cambiano nulla. Per tornare al funzionamento normale
+   * basta togliere la variabile (o impostarla a false) e riavviare.
+   */
+  adminOnlyEdits: process.env.ADMIN_ONLY_EDITS === "true",
   /** Invio email (sezione Consigli). Senza SMTP_HOST e SUGGESTIONS_TO il form risulta disattivato. */
   mail: {
     host: process.env.SMTP_HOST,

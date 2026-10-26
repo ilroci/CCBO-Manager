@@ -2,6 +2,7 @@ import cors from "cors";
 import express, { type Request, type Response } from "express";
 import { z } from "zod";
 import { env } from "./config/env";
+import { adminOnlyWrites } from "./middleware/auth";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { authRouter } from "./routes/auth.routes";
 import { equipmentRouter } from "./routes/equipment.routes";
@@ -35,6 +36,7 @@ export function createApp() {
     res.status(200).json({ status: "ok" });
   });
 
+  app.use("/api", adminOnlyWrites);
   app.use("/api/auth", authRouter);
   app.use("/api/users", usersRouter);
   app.use("/api/equipment", equipmentRouter);
