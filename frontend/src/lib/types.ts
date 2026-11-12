@@ -78,7 +78,9 @@ export interface Rental {
   id: string;
   kind: "PERSONAL" | "OUTING";
   status: RentalStatus;
-  member: Pick<User, "id" | "firstName" | "lastName" | "email">;
+  /** null solo per il noleggio di un ospite di un'uscita (vedi `guest`). */
+  member: Pick<User, "id" | "firstName" | "lastName" | "email"> | null;
+  guest: { firstName: string; lastName: string } | null;
   /** "YYYY-MM-DD", ultimo giorno incluso */
   startDate: string;
   endDate: string;
@@ -107,7 +109,13 @@ type Person = Pick<User, "id" | "firstName" | "lastName" | "email">;
 
 export interface OutingParticipant {
   id: string;
-  member: Person;
+  /** Nome e cognome, del socio o dell'ospite. */
+  firstName: string;
+  lastName: string;
+  /** Socio in anagrafica; null = ospite (partecipante non in anagrafica). */
+  member: Person | null;
+  isGuest: boolean;
+  guestPhone: string | null;
   travelMode: TravelMode;
   rentalAmount: string;
   transportAmount: string;

@@ -151,7 +151,7 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `DELETE` | `/api/outings/:id` | Admin, Istruttore: annulla l'uscita eliminando partecipanti, noleggi e riscossioni |
 | `POST` | `/api/outings/:id/return-all` | Admin, Istruttore |
 | `POST` | `/api/outings/:id/quote` | Admin, Istruttore (riepilogo quota del wizard) |
-| `POST` | `/api/outings/:id/participants` | Admin, Istruttore (wizard) |
+| `POST` | `/api/outings/:id/participants` | Admin, Istruttore (wizard): `memberId` oppure `guest: { firstName, lastName, phone? }` |
 | `PATCH` · `DELETE` | `/api/outings/:id/participants/:pid` | Admin, Istruttore |
 | `POST` | `/api/outings/:id/participants/:pid/return` | Admin, Istruttore (annullabile) |
 | `POST` | `/api/outings/:id/participants/:pid/payments/:category` | Admin, Istruttore: riscuote `RENTAL`, `TRANSPORT` o `VAN` (`{ paid }`, annullabile) |
@@ -222,7 +222,7 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   trasporto). Programmata / In corso / Conclusa si ricava dalle date. **Annullare** un'uscita
   la elimina con tutto quello che contiene (partecipanti, noleggi, riscossioni), anche se ci
   sono quote già riscosse: il materiale torna subito prenotabile. I partecipanti si aggiungono col wizard:
-  socio → noleggio → modalità di viaggio A/B/C → riepilogo con la quota. Il noleggio ha due
+  socio (oppure **ospite** non in anagrafica) → noleggio → modalità di viaggio A/B/C → riepilogo con la quota. Il noleggio ha due
   livelli: la **vista rapida** in cui si scelgono le voci di listino (Pacchetto Kayak, Giacca
   d'acqua, Muta) che determinano il prezzo, senza indicare pezzi e senza bloccarne nessuno;
   il **dettaglio facoltativo** in cui si assegnano pezzi specifici (solo delle categorie delle
@@ -235,6 +235,11 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   se si cambiano i pezzi di un socio, il suo materiale torna "da far rientrare". Cambiare le
   date sposta i noleggi e ricalcola le quote. Se l'uscita indica i posti sul furgone, i
   partecipanti "A bordo" non possono superarli. Qualunque istruttore può gestire qualunque uscita.
+- **Ospiti**: un partecipante può essere una persona non in anagrafica. Se ne indicano nome,
+  cognome e un telefono facoltativo, salvati solo sul partecipante (`OutingParticipant.guest*`,
+  `memberId` null): non diventa un utente e non ha un accesso. Per il resto vale tutto come per un
+  socio (noleggio, viaggio, riscossioni). Il suo noleggio è un `Rental` senza `memberId`, visibile
+  solo nell'elenco di tutti i noleggi dello staff.
 - **Riscossioni**: ogni partecipante ha fino a tre voci, riscosse separatamente e anche in
   momenti diversi (`OutingPayment`, una per voce, con data e chi l'ha confermata):
   (1) **noleggio**, (2) **trasporto attrezzatura**, (3) **quota furgone + costi vivi**, mostrati

@@ -54,8 +54,14 @@ export function ParticipantCard({
         <span className="flex items-center gap-2">
           <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
           <span className="font-medium">
-            {p.member.lastName} {p.member.firstName}
+            {p.lastName} {p.firstName}
           </span>
+          {p.isGuest && (
+            <Badge variant="outline" title="Partecipante non in anagrafica">
+              Ospite
+            </Badge>
+          )}
+          {p.isGuest && p.guestPhone && <span className="text-sm text-muted-foreground">{p.guestPhone}</span>}
         </span>
         <span className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
           {p.collections.length === 0 ? (

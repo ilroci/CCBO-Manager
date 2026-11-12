@@ -152,7 +152,7 @@ export function MyRentalsPage() {
       ) : (
         <div className="grid gap-4">
           {rentals.map((rental) => {
-            const isOwner = rental.member.id === user.id;
+            const isOwner = rental.member?.id === user.id;
             const canCancel = rental.status === "RESERVED" && rental.kind === "PERSONAL" && (isOwner || isStaff);
             const busy = busyId === rental.id;
             return (
@@ -168,7 +168,8 @@ export function MyRentalsPage() {
                           <>
                             {" · "}
                             <span className="text-foreground">
-                              {rental.member.firstName} {rental.member.lastName}
+                              {(rental.member ?? rental.guest)?.firstName} {(rental.member ?? rental.guest)?.lastName}
+                              {rental.guest && " (ospite)"}
                             </span>
                           </>
                         )}

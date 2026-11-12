@@ -123,7 +123,7 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((
 export async function syncParticipant(
   tx: Db,
   outing: Pick<Outing, "startDate" | "endDate">,
-  participant: { id: string; memberId: string; travelMode: TravelMode },
+  participant: { id: string; memberId: string | null; travelMode: TravelMode },
   change: { spec?: RentalSpec; datesChanged?: boolean } = {},
 ) {
   const { startDate, endDate } = outing;
@@ -246,7 +246,8 @@ const personSelect = { id: true, firstName: true, lastName: true, email: true } 
 export const outingInclude = {
   instructor: { select: personSelect },
   participants: {
-    orderBy: [{ member: { lastName: "asc" } }, { member: { firstName: "asc" } }],
+    // L'ordine alfabetico (soci e ospiti insieme) è applicato in toOutingDto.
+    orderBy: { createdAt: "asc" },
     include: {
       member: { select: personSelect },
       payments: { include: { confirmedBy: { select: personSelect } } },
@@ -293,11 +294,34 @@ function collections(p: ParticipantWithRelations) {
   });
 }
 
+/**
+ * Nome e cognome del partecipante: del socio in anagrafica oppure dell'ospite.
+ * Usato anche per il noleggio di un ospite, che non ha un utente collegato.
+ */
+export function participantName(p: {
+  member: { firstName: string; lastName: string } | null;
+  guestFirstName: string | null;
+  guestLastName: string | null;
+}) {
+  return {
+    firstName: p.member?.firstName ?? p.guestFirstName ?? "",
+    lastName: p.member?.lastName ?? p.guestLastName ?? "",
+  };
+}
+
+const byName = (a: { firstName: string; lastName: string }, b: { firstName: string; lastName: string }) =>
+  a.lastName.localeCompare(b.lastName, "it", { sensitivity: "base" }) ||
+  a.firstName.localeCompare(b.firstName, "it", { sensitivity: "base" });
+
 /** Forma pubblica dell'uscita, con i totali calcolati. */
 export function toOutingDto(outing: OutingWithRelations) {
   const participants = outing.participants.map((p) => ({
     id: p.id,
+    ...participantName(p),
+    /** Socio in anagrafica; null = ospite (partecipante non in anagrafica). */
     member: p.member,
+    isGuest: p.member === null,
+    guestPhone: p.guestPhone,
     travelMode: p.travelMode,
     rentalAmount: money(p.rentalAmount),
     transportAmount: money(p.transportAmount),
@@ -314,6 +338,7 @@ export function toOutingDto(outing: OutingWithRelations) {
       charges: p.rental.charges.map((c) => ({ ...c, dailyPrice: money(c.dailyPrice), amount: money(c.amount) })),
     },
   }));
+  participants.sort(byName);
 
   const total = outing.participants.reduce((sum, p) => sum.add(p.totalAmount), ZERO);
   const collected = outing.participants

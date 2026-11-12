@@ -7,3 +7,5 @@ dist/
 # Certificati CA aziendali/locali: servono solo sulla macchina che li usa
 docker/certs/*
 !docker/certs/README.md
+data/
+backups/

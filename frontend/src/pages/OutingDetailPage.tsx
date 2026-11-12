@@ -233,7 +233,7 @@ export function OutingDetailPage() {
           title={confirmTexts[confirm.kind].title}
           description={
             confirm.kind === "remove"
-              ? `${confirm.participant.member.firstName} ${confirm.participant.member.lastName}: ${confirmTexts.remove.description}`
+              ? `${confirm.participant.firstName} ${confirm.participant.lastName}: ${confirmTexts.remove.description}`
               : confirmTexts[confirm.kind].description
           }
           confirmLabel={confirmTexts[confirm.kind].label}

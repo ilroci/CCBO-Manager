@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatPeriod } from "@/lib/dates";
@@ -29,7 +30,7 @@ const STEPS = ["Socio", "Noleggio", "Trasporto", "Conferma"] as const;
 
 /**
  * Wizard dell'istruttore per inserire un socio nell'uscita:
- * selezione socio → Passo 1 noleggio (voci di listino; il materiale specifico è un dettaglio
+ * selezione socio (oppure dati di un ospite non in anagrafica) → Passo 1 noleggio (voci di listino; il materiale specifico è un dettaglio
  * facoltativo) → Passo 2 modalità di viaggio (scelta unica A/B/C) → riepilogo con la quota.
  */
 export function ParticipantWizard({
@@ -50,6 +51,9 @@ export function ParticipantWizard({
   const [members, setMembers] = useState<User[]>([]);
   const [memberQuery, setMemberQuery] = useState("");
   const [memberId, setMemberId] = useState<string>();
+  /** Socio in anagrafica oppure ospite (partecipante non in anagrafica, senza account). */
+  const [personKind, setPersonKind] = useState<"member" | "guest">("member");
+  const [guest, setGuest] = useState({ firstName: "", lastName: "", phone: "" });
   const [wantsRental, setWantsRental] = useState<boolean>();
   const [items, setItems] = useState<AvailableItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -73,8 +77,11 @@ export function ParticipantWizard({
     setQuote(undefined);
     setMemberQuery("");
     if (target) {
-      setStep(1);
-      setMemberId(target.member.id);
+      // Per un ospite si parte dai suoi dati, così si possono correggere.
+      setStep(target.isGuest ? 0 : 1);
+      setMemberId(target.member?.id);
+      setPersonKind(target.isGuest ? "guest" : "member");
+      setGuest({ firstName: target.firstName, lastName: target.lastName, phone: target.guestPhone ?? "" });
       setWantsRental(Boolean(target.rental));
       setOptionIds(new Set(target.rental?.charges.flatMap((c) => (c.optionId ? [c.optionId] : [])) ?? []));
       setSelected(new Set(target.rental?.items.map((row) => row.item.id) ?? []));
@@ -84,6 +91,8 @@ export function ParticipantWizard({
     } else {
       setStep(0);
       setMemberId(undefined);
+      setPersonKind("member");
+      setGuest({ firstName: "", lastName: "", phone: "" });
       setWantsRental(undefined);
       setOptionIds(new Set());
       setSelected(new Set());
@@ -132,7 +141,7 @@ export function ParticipantWizard({
       .catch((err) => setError(getErrorMessage(err)));
   }, [step]);
 
-  const participantIds = new Set(outing.participants.map((p) => p.member.id));
+  const participantIds = new Set(outing.participants.flatMap((p) => (p.member ? [p.member.id] : [])));
   const candidates = useMemo(() => {
     const q = memberQuery.trim().toLowerCase();
     return members.filter(
@@ -142,7 +151,14 @@ export function ParticipantWizard({
     );
   }, [members, memberQuery, outing.participants]);
 
-  const member = target?.member ?? members.find((m) => m.id === memberId);
+  const guestValid = guest.firstName.trim() !== "" && guest.lastName.trim() !== "";
+  const guestPayload = { firstName: guest.firstName.trim(), lastName: guest.lastName.trim(), phone: guest.phone.trim() || null };
+  const person =
+    personKind === "guest"
+      ? guestValid
+        ? guestPayload
+        : undefined
+      : (target ?? members.find((m) => m.id === memberId));
   // Pezzi selezionati: dall'elenco caricato oppure, se il dettaglio è chiuso, dal noleggio attuale.
   const knownItems = new Map([...(target?.rental?.items.map((r) => r.item) ?? []), ...items].map((i) => [i.id, i]));
   const selectedItems = [...selected].flatMap((itemId) => knownItems.get(itemId) ?? []);
@@ -152,7 +168,7 @@ export function ParticipantWizard({
   const vanFull = outing.vanSeats !== null && aboardOthers >= outing.vanSeats;
 
   const canNext =
-    (step === 0 && memberId) ||
+    (step === 0 && (personKind === "guest" ? guestValid : memberId)) ||
     (step === 1 && (wantsRental === false || (wantsRental === true && optionIds.size > 0))) ||
     (step === 2 && travelMode);
 
@@ -186,11 +202,12 @@ export function ParticipantWizard({
         ? await api.patch<{ outing: Outing }>(`/api/outings/${outing.id}/participants/${target!.id}`, {
             // A noleggio riscosso le voci non cambiano; il materiale specifico sì.
             ...(rentalLocked ? {} : { optionIds: chosenOptions, rentalDays: wantsRental ? rentalDays : null }),
+            ...(target!.isGuest ? { guest: guestPayload } : {}),
             itemIds,
             travelMode,
           })
         : await api.post<{ outing: Outing }>(`/api/outings/${outing.id}/participants`, {
-            memberId,
+            ...(personKind === "guest" ? { guest: guestPayload } : { memberId }),
             optionIds: chosenOptions,
             itemIds,
             rentalDays: wantsRental ? rentalDays : null,
@@ -204,7 +221,8 @@ export function ParticipantWizard({
     }
   }
 
-  const firstStep = isEdit ? 1 : 0;
+  // In modifica il socio non cambia; dell'ospite si possono correggere i dati.
+  const firstStep = isEdit && !target?.isGuest ? 1 : 0;
   // In modifica: una voce già riscossa non può cambiare (lo verifica anche il backend).
   const paidCategories = new Set(target?.collections.filter((c) => c.payment).map((c) => c.category) ?? []);
   const rentalLocked = paidCategories.has("RENTAL");
@@ -218,10 +236,11 @@ export function ParticipantWizard({
         <DialogHeader>
           <DialogTitle>
             {isEdit ? "Modifica partecipante" : "Aggiungi partecipante"}
-            {member && step > 0 && (
+            {person && step > 0 && (
               <span className="font-normal text-muted-foreground">
                 {" "}
-                · {member.firstName} {member.lastName}
+                · {person.firstName} {person.lastName}
+                {personKind === "guest" && " (ospite)"}
               </span>
             )}
           </DialogTitle>
@@ -256,43 +275,105 @@ export function ParticipantWizard({
 
         {step === 0 && (
           <div className="grid gap-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="search"
-                autoFocus
-                value={memberQuery}
-                onChange={(e) => setMemberQuery(e.target.value)}
-                placeholder="Cerca per nome o email"
-                className="pl-9"
-                aria-label="Cerca socio"
-              />
-            </div>
-            <div className="grid max-h-80 gap-1 overflow-y-auto">
-              {candidates.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setMemberId(m.id)}
-                  aria-pressed={memberId === m.id}
-                  className={cn(
-                    "flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                    memberId === m.id ? "border-primary ring-1 ring-primary" : "hover:bg-accent/50",
+            {!isEdit && (
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: "member" as const, label: "Socio in anagrafica" },
+                  { value: "guest" as const, label: "Ospite (non in anagrafica)" },
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setPersonKind(value)}
+                    aria-pressed={personKind === value}
+                    className={cn(
+                      "rounded-md border px-3 py-2 text-sm transition-colors",
+                      personKind === value ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-accent/50",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {personKind === "guest" ? (
+              <div className="grid gap-3">
+                <p className="text-sm text-muted-foreground">
+                  L'ospite partecipa solo a questa uscita: non viene aggiunto agli utenti e non ha un accesso.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="guest-first-name">Nome</Label>
+                    <Input
+                      id="guest-first-name"
+                      autoFocus
+                      value={guest.firstName}
+                      onChange={(e) => setGuest({ ...guest, firstName: e.target.value })}
+                      maxLength={100}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="guest-last-name">Cognome</Label>
+                    <Input
+                      id="guest-last-name"
+                      value={guest.lastName}
+                      onChange={(e) => setGuest({ ...guest, lastName: e.target.value })}
+                      maxLength={100}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-1.5 sm:w-1/2 sm:pr-1.5">
+                  <Label htmlFor="guest-phone">Telefono (facoltativo)</Label>
+                  <Input
+                    id="guest-phone"
+                    type="tel"
+                    value={guest.phone}
+                    onChange={(e) => setGuest({ ...guest, phone: e.target.value })}
+                    maxLength={30}
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    autoFocus
+                    value={memberQuery}
+                    onChange={(e) => setMemberQuery(e.target.value)}
+                    placeholder="Cerca per nome o email"
+                    className="pl-9"
+                    aria-label="Cerca socio"
+                  />
+                </div>
+                <div className="grid max-h-80 gap-1 overflow-y-auto">
+                  {candidates.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setMemberId(m.id)}
+                      aria-pressed={memberId === m.id}
+                      className={cn(
+                        "flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                        memberId === m.id ? "border-primary ring-1 ring-primary" : "hover:bg-accent/50",
+                      )}
+                    >
+                      <span>
+                        <span className="font-medium">
+                          {m.lastName} {m.firstName}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">{m.email}</span>
+                      </span>
+                      {memberId === m.id && <Check className="size-4 text-primary" />}
+                    </button>
+                  ))}
+                  {candidates.length === 0 && (
+                    <p className="py-6 text-center text-sm text-muted-foreground">Nessun socio da aggiungere.</p>
                   )}
-                >
-                  <span>
-                    <span className="font-medium">
-                      {m.lastName} {m.firstName}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">{m.email}</span>
-                  </span>
-                  {memberId === m.id && <Check className="size-4 text-primary" />}
-                </button>
-              ))}
-              {candidates.length === 0 && (
-                <p className="py-6 text-center text-sm text-muted-foreground">Nessun socio da aggiungere.</p>
-              )}
-            </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 

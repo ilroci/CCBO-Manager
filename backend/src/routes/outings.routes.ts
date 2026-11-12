@@ -207,8 +207,18 @@ const idList = z
   .max(20)
   .transform((ids) => [...new Set(ids)]);
 
+/** Ospite: partecipante non in anagrafica, senza account. */
+const guestSchema = z.object({
+  firstName: z.string().trim().min(1, "Indica il nome").max(100),
+  lastName: z.string().trim().min(1, "Indica il cognome").max(100),
+  phone: optionalText.pipe(z.string().max(30).nullable()),
+});
+
 const participantSchema = z.object({
-  memberId: z.string().min(1),
+  /** Socio in anagrafica; in alternativa `guest`. */
+  memberId: z.string().min(1).optional(),
+  /** Ospite non in anagrafica; in alternativa `memberId`. */
+  guest: guestSchema.optional(),
   /** Passo 1, vista rapida — voci di listino noleggiate (Pacchetto Kayak, Giacca, Muta); vuoto = nessun noleggio. */
   optionIds: idList.default([]),
   /** Passo 1, dettaglio facoltativo — pezzi specifici assegnati, nelle categorie delle voci scelte. */
@@ -219,7 +229,7 @@ const participantSchema = z.object({
   travelMode: z.enum(TravelMode),
 });
 
-const quoteSchema = participantSchema.omit({ memberId: true });
+const quoteSchema = participantSchema.omit({ memberId: true, guest: true });
 
 function assertRentalDays(outing: LoadedOuting, days: number | null | undefined) {
   const outingDays = calendarDays(outing.startDate, outing.endDate);
@@ -249,21 +259,31 @@ outingsRouter.post("/:id/quote", async (req, res) => {
   });
 });
 
-/** POST /api/outings/:id/participants — aggiunge un socio con noleggio e modalità di viaggio. */
+/**
+ * POST /api/outings/:id/participants — aggiunge un socio in anagrafica (`memberId`) oppure un
+ * ospite non in anagrafica (`guest`: nome, cognome, telefono facoltativo), con noleggio e
+ * modalità di viaggio. L'ospite non diventa un utente: esiste solo dentro l'uscita.
+ */
 outingsRouter.post("/:id/participants", async (req, res) => {
   const { id } = idParams.parse(req.params);
-  const { memberId, optionIds, itemIds, rentalDays, travelMode } = participantSchema.parse(req.body);
+  const { memberId, guest, optionIds, itemIds, rentalDays, travelMode } = participantSchema.parse(req.body);
+  if (Boolean(memberId) === Boolean(guest)) throw badRequest("Indica un socio oppure i dati di un ospite");
   const outing = await loadOuting(id);
   assertRentalDays(outing, rentalDays);
 
-  const member = await prisma.user.findUnique({ where: { id: memberId } });
-  if (!member || !member.isActive) throw badRequest("Socio non trovato o disattivato");
-  if (outing.participants.some((p) => p.memberId === memberId)) {
-    throw new HttpError(409, `${member.firstName} ${member.lastName} partecipa già a questa uscita`);
+  if (memberId) {
+    const member = await prisma.user.findUnique({ where: { id: memberId } });
+    if (!member || !member.isActive) throw badRequest("Socio non trovato o disattivato");
+    if (outing.participants.some((p) => p.memberId === memberId)) {
+      throw new HttpError(409, `${member.firstName} ${member.lastName} partecipa già a questa uscita`);
+    }
   }
+  const person = memberId
+    ? { memberId }
+    : { guestFirstName: guest!.firstName, guestLastName: guest!.lastName, guestPhone: guest!.phone };
 
   await prisma.$transaction(async (tx) => {
-    const participant = await tx.outingParticipant.create({ data: { outingId: id, memberId, travelMode } });
+    const participant = await tx.outingParticipant.create({ data: { outingId: id, ...person, travelMode } });
     await assertVanSeats(tx, id, outing.vanSeats);
     await syncParticipant(tx, outing, participant, { spec: { optionIds, itemIds, days: rentalDays ?? null } });
   });
@@ -280,6 +300,8 @@ const updateParticipantSchema = z.object({
   itemIds: idList.optional(),
   rentalDays: z.number().int().min(1).max(MAX_RENTAL_DAYS).nullish(),
   travelMode: z.enum(TravelMode).optional(),
+  /** Solo per gli ospiti: correzione di nome, cognome e telefono. */
+  guest: guestSchema.optional(),
 });
 
 function findParticipant(outing: LoadedOuting, pid: string) {
@@ -290,9 +312,10 @@ function findParticipant(outing: LoadedOuting, pid: string) {
 
 outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
-  const { optionIds, itemIds, rentalDays, travelMode } = updateParticipantSchema.parse(req.body);
+  const { optionIds, itemIds, rentalDays, travelMode, guest } = updateParticipantSchema.parse(req.body);
   const outing = await loadOuting(id);
   const participant = findParticipant(outing, pid);
+  if (guest && participant.memberId) throw badRequest("I dati anagrafici di un socio si modificano da Utenti");
   assertRentalDays(outing, rentalDays);
   const outingDays = calendarDays(outing.startDate, outing.endDate);
 
@@ -327,6 +350,12 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
   }
 
   await prisma.$transaction(async (tx) => {
+    if (guest) {
+      await tx.outingParticipant.update({
+        where: { id: pid },
+        data: { guestFirstName: guest.firstName, guestLastName: guest.lastName, guestPhone: guest.phone },
+      });
+    }
     if (modeChanged) {
       await tx.outingParticipant.update({ where: { id: pid }, data: { travelMode } });
       await assertVanSeats(tx, id, outing.vanSeats);

@@ -19,60 +19,60 @@ datasource db {
 
 /// Ruoli RBAC
 enum Role {
-  ADMIN       // Amministratore: accesso completo
-  INSTRUCTOR  // Istruttore: gestisce le uscite di club
-  MEMBER      // Socio: catalogo, prenotazioni personali, storico
+  ADMIN // Amministratore: accesso completo
+  INSTRUCTOR // Istruttore: gestisce le uscite di club
+  MEMBER // Socio: catalogo, prenotazioni personali, storico
 }
 
 /// Categorie di attrezzatura gestite
 enum EquipmentCategory {
-  CANOE        // Canoe
-  PADDLE       // Pagaie
-  HELMET       // Caschi
+  CANOE // Canoe
+  PADDLE // Pagaie
+  HELMET // Caschi
   WATER_JACKET // Giacche d'acqua
-  SPRAY_DECK   // Paraspruzzi
-  WETSUIT      // Mute
-  LIFE_JACKET  // Salvagenti
+  SPRAY_DECK // Paraspruzzi
+  WETSUIT // Mute
+  LIFE_JACKET // Salvagenti
 }
 
 /// Stato attuale del singolo pezzo
 enum ItemStatus {
   AVAILABLE // Disponibile
-  RENTED    // In Noleggio
+  RENTED // In Noleggio
 }
 
 /// Servizi legati al furgone (voci di listino non attrezzatura)
 enum ServiceType {
   EQUIPMENT_TRANSPORT // (2) Solo trasporto attrezzatura sul furgone
-  VAN_SEAT            // (3) Quota utilizzo furgone per chi viaggia a bordo
+  VAN_SEAT // (3) Quota utilizzo furgone per chi viaggia a bordo
 }
 
 /// Modalità di viaggio del socio in un'uscita (Passo 2 del wizard).
 /// Codifica a livello di dato l'esclusività mutua tra opzione (2) e (3):
 /// un partecipante ha UNA sola modalità.
 enum TravelMode {
-  VAN            // A) A bordo del furgone → quota furgone + costi vivi
+  VAN // A) A bordo del furgone → quota furgone + costi vivi
   TRANSPORT_ONLY // B) Mezzo proprio, attrezzatura sul furgone → tariffa trasporto
-  AUTONOMOUS     // C) Autonomo → nessun costo furgone
+  AUTONOMOUS // C) Autonomo → nessun costo furgone
 }
 
 enum RentalKind {
   PERSONAL // prenotazione autonoma del socio
-  OUTING   // noleggio dentro un'uscita di club
+  OUTING // noleggio dentro un'uscita di club
 }
 
 enum RentalStatus {
-  RESERVED  // prenotato, non ancora ritirato
-  ACTIVE    // materiale consegnato
-  RETURNED  // materiale rientrato
+  RESERVED // prenotato, non ancora ritirato
+  ACTIVE // materiale consegnato
+  RETURNED // materiale rientrato
   CANCELLED
 }
 
 /// Voci riscosse separatamente da ogni partecipante di un'uscita (anche in momenti diversi).
 enum CollectionCategory {
-  RENTAL    // (1) noleggio attrezzatura
+  RENTAL // (1) noleggio attrezzatura
   TRANSPORT // (2) solo trasporto attrezzatura
-  VAN       // (3) quota furgone + costi vivi, riscossi insieme
+  VAN // (3) quota furgone + costi vivi, riscossi insieme
 }
 
 // ---------------------------------------------------------------------
@@ -189,20 +189,21 @@ model ServiceFee {
 /// Un pezzo non può stare in due noleggi RESERVED/ACTIVE con giorni sovrapposti
 /// (verificato dall'API dentro una transazione con lock sui pezzi).
 model Rental {
-  id        String       @id @default(cuid())
-  kind      RentalKind
-  status    RentalStatus @default(RESERVED)
-  memberId  String
-  member    User         @relation("RentalMember", fields: [memberId], references: [id])
-  startDate DateTime     @db.Date
+  id          String       @id @default(cuid())
+  kind        RentalKind
+  status      RentalStatus @default(RESERVED)
+  /// null solo per il noleggio di un ospite di un'uscita (partecipante non in anagrafica)
+  memberId    String?
+  member      User?        @relation("RentalMember", fields: [memberId], references: [id], onDelete: Restrict)
+  startDate   DateTime     @db.Date
   /// Ultimo giorno di noleggio (incluso)
-  endDate   DateTime     @db.Date
+  endDate     DateTime     @db.Date
   /// Solo kind = OUTING: giorni addebitati a chi partecipa a una parte dell'uscita
   /// (null = tutta l'uscita). Le date restano quelle dell'uscita, il materiale è impegnato comunque.
   chargedDays Int?
   /// Totale calcolato (somma delle voci addebitate), congelato alla conferma
-  total     Decimal      @default(0) @db.Decimal(10, 2)
-  notes     String?
+  total       Decimal      @default(0) @db.Decimal(10, 2)
+  notes       String?
 
   /// Valorizzato solo per kind = OUTING
   participantId String?            @unique
@@ -210,8 +211,8 @@ model Rental {
 
   items     RentalItem[]
   charges   RentalCharge[]
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   @@index([memberId, startDate])
   @@index([status, startDate, endDate])
@@ -226,7 +227,7 @@ model RentalItem {
   itemId     String
   item       EquipmentItem @relation(fields: [itemId], references: [id])
   returnedAt DateTime?
-  returnNote String?       // es. danni riscontrati al rientro
+  returnNote String? // es. danni riscontrati al rientro
 
   @@unique([rentalId, itemId])
   @@index([itemId])
@@ -255,28 +256,28 @@ model RentalCharge {
 /// Uscita di club. Giorni di calendario inclusivi, come i noleggi: i noleggi dei
 /// partecipanti (kind = OUTING) hanno le stesse date dell'uscita.
 model Outing {
-  id           String       @id @default(cuid())
+  id           String   @id @default(cuid())
   title        String
   destination  String?
-  startDate    DateTime     @db.Date
+  startDate    DateTime @db.Date
   /// Ultimo giorno dell'uscita (incluso)
-  endDate      DateTime     @db.Date
+  endDate      DateTime @db.Date
   instructorId String
-  instructor   User         @relation("OutingInstructor", fields: [instructorId], references: [id])
+  instructor   User     @relation("OutingInstructor", fields: [instructorId], references: [id])
 
   /// Posti disponibili sul furgone (null = nessun limite)
-  vanSeats     Int?
+  vanSeats Int?
 
   notes        String?
   participants OutingParticipant[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   @@index([startDate])
   @@index([instructorId])
 }
 
-/// Riga di partecipazione socio ↔ uscita, prodotta dal wizard.
+/// Riga di partecipazione socio (o ospite non in anagrafica) ↔ uscita, prodotta dal wizard.
 /// Il noleggio (opzione 1) è la relazione opzionale `rental`;
 /// trasporto/furgone (opzioni 2/3) è il singolo campo `travelMode`.
 /// Riscossione di una voce (noleggio, trasporto, furgone + costi vivi) da un partecipante.
@@ -295,14 +296,19 @@ model OutingPayment {
 }
 
 model OutingParticipant {
-  id         String     @id @default(cuid())
-  outingId   String
-  outing     Outing     @relation(fields: [outingId], references: [id], onDelete: Cascade)
-  memberId   String
-  member     User       @relation(fields: [memberId], references: [id])
-  travelMode TravelMode @default(AUTONOMOUS)
+  id             String     @id @default(cuid())
+  outingId       String
+  outing         Outing     @relation(fields: [outingId], references: [id], onDelete: Cascade)
+  /// Socio in anagrafica; null = ospite, identificato da guestFirstName/guestLastName
+  memberId       String?
+  member         User?      @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  /// Solo per gli ospiti (partecipanti non in anagrafica): nessun account, nessun accesso
+  guestFirstName String?
+  guestLastName  String?
+  guestPhone     String?
+  travelMode     TravelMode @default(AUTONOMOUS)
 
-  rental     Rental?
+  rental Rental?
 
   // Importi applicati (copia, ricalcolata quando cambia la voce corrispondente).
   // I costi vivi di chi è a bordo del furgone non hanno un importo: si riscuotono insieme
@@ -317,6 +323,6 @@ model OutingParticipant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([outingId, memberId]) // un socio una sola volta per uscita
+  @@unique([outingId, memberId]) // un socio una sola volta per uscita (gli ospiti hanno memberId null)
   @@index([memberId])
 }

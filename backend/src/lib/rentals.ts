@@ -75,6 +75,8 @@ export async function lockAndAssertAvailable(
 
 export const rentalInclude = {
   member: { select: { id: true, firstName: true, lastName: true, email: true } },
+  // Per il noleggio di un ospite di un'uscita, che non ha un utente collegato.
+  participant: { select: { guestFirstName: true, guestLastName: true } },
   items: { include: { item: { include: itemInclude } }, orderBy: { item: { category: "asc" } } },
   charges: true,
 } satisfies Prisma.RentalInclude;
@@ -82,9 +84,14 @@ export const rentalInclude = {
 type RentalWithRelations = Prisma.RentalGetPayload<{ include: typeof rentalInclude }>;
 
 /** Forma pubblica del noleggio: date "YYYY-MM-DD", importi come stringhe a due decimali. */
-export function toRentalDto(rental: RentalWithRelations) {
+export function toRentalDto({ participant, ...rental }: RentalWithRelations) {
   return {
     ...rental,
+    /** Solo per il noleggio di un ospite di un'uscita (member = null). */
+    guest:
+      rental.member === null && participant
+        ? { firstName: participant.guestFirstName ?? "", lastName: participant.guestLastName ?? "" }
+        : null,
     startDate: formatDate(rental.startDate),
     endDate: formatDate(rental.endDate),
     days: calendarDays(rental.startDate, rental.endDate),
