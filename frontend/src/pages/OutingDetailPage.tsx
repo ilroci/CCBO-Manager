@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Ban, Loader2, MapPin, PackageCheck, Pencil, UserPlus } from "lucide-react";
+import { ArrowLeft, Ban, Bus, Car, Loader2, MapPin, Package, PackageCheck, Pencil, UserPlus, type LucideIcon } from "lucide-react";
 import { useCanEdit } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FormError } from "@/components/FormError";
@@ -12,11 +12,18 @@ import { Button } from "@/components/ui/button";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatPeriod } from "@/lib/dates";
 import { formatEuro } from "@/lib/money";
-import { OUTING_PHASE_CLASSES, OUTING_PHASE_LABELS, outingPhase } from "@/lib/outings";
-import type { Outing, OutingParticipant } from "@/lib/types";
+import { OUTING_PHASE_CLASSES, OUTING_PHASE_LABELS, TRAVEL_MODES, outingPhase } from "@/lib/outings";
+import type { Outing, OutingParticipant, TravelMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Confirm = { kind: "cancel" } | { kind: "remove"; participant: OutingParticipant };
+
+/** Intestazioni dei gruppi di partecipanti, uno per modalità di viaggio (furgone per primo). */
+const TRAVEL_GROUPS: Record<TravelMode, { title: string; icon: LucideIcon }> = {
+  VAN: { title: "Sul furgone", icon: Bus },
+  TRANSPORT_ONLY: { title: "Solo trasporto attrezzatura", icon: Package },
+  AUTONOMOUS: { title: "Autonomi", icon: Car },
+};
 
 export function OutingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -194,19 +201,37 @@ export function OutingDetailPage() {
           {canEdit ? "Nessun partecipante: aggiungi i soci con il pulsante qui sopra." : "Nessun partecipante."}
         </p>
       ) : (
-        <div className="grid gap-3">
-          {outing.participants.map((p) => (
-            <ParticipantCard
-              key={p.id}
-              participant={p}
-              busy={busyId === p.id}
-              readOnly={!canEdit}
-              onEdit={() => setWizard(p)}
-              onRemove={() => setConfirm({ kind: "remove", participant: p })}
-              onCollect={(category, paid) => void participantAction(p, `payments/${category}`, { paid })}
-              onReturn={(returned) => void participantAction(p, "return", { returned })}
-            />
-          ))}
+        <div className="grid gap-6">
+          {TRAVEL_MODES.map(({ value }) => {
+            const group = outing.participants.filter((p) => p.travelMode === value);
+            if (group.length === 0) return null;
+            const { title, icon: Icon } = TRAVEL_GROUPS[value];
+            const seats = value === "VAN" && outing.vanSeats ? ` / ${outing.vanSeats} posti` : "";
+            return (
+              <section key={value} className="grid gap-3">
+                <h3 className="flex items-center gap-2 font-medium">
+                  <Icon className="size-4 text-muted-foreground" />
+                  {title}
+                  <span className="text-sm font-normal text-muted-foreground tabular-nums">
+                    ({group.length}
+                    {seats})
+                  </span>
+                </h3>
+                {group.map((p) => (
+                  <ParticipantCard
+                    key={p.id}
+                    participant={p}
+                    busy={busyId === p.id}
+                    readOnly={!canEdit}
+                    onEdit={() => setWizard(p)}
+                    onRemove={() => setConfirm({ kind: "remove", participant: p })}
+                    onCollect={(category, paid) => void participantAction(p, `payments/${category}`, { paid })}
+                    onReturn={(returned) => void participantAction(p, "return", { returned })}
+                  />
+                ))}
+              </section>
+            );
+          })}
         </div>
       )}
 
