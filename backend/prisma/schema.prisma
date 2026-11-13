@@ -95,6 +95,7 @@ model User {
   outingsLed          Outing[]            @relation("OutingInstructor")
   participations      OutingParticipant[]
   paymentsConfirmed   OutingPayment[]
+  expensesRecorded    OutingExpense[]
   rentalOptionUpdates RentalOption[]
   serviceFeeUpdates   ServiceFee[]
 
@@ -270,6 +271,7 @@ model Outing {
 
   notes        String?
   participants OutingParticipant[]
+  expenses     OutingExpense[]
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
 
@@ -319,10 +321,34 @@ model OutingParticipant {
   totalAmount     Decimal @default(0) @db.Decimal(10, 2) // (1)+(2)+(3), costi vivi esclusi
 
   payments OutingPayment[]
+  /// Spese di viaggio anticipate da chi è a bordo del furgone (conti del furgone)
+  expensesPaid OutingExpense[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([outingId, memberId]) // un socio una sola volta per uscita (gli ospiti hanno memberId null)
   @@index([memberId])
+}
+
+/// Spesa di viaggio (carburante, caselli, parcheggi…) anticipata da un partecipante a bordo del
+/// furgone. Il totale delle spese si divide in parti uguali tra tutti i partecipanti a bordo:
+/// il conguaglio (chi deve dare e chi deve ricevere) è calcolato, non salvato.
+model OutingExpense {
+  id           String            @id @default(cuid())
+  outingId     String
+  outing       Outing            @relation(fields: [outingId], references: [id], onDelete: Cascade)
+  /// Chi ha pagato: deve essere a bordo del furgone. L'API impedisce di rimuoverlo dall'uscita
+  /// (o di farlo scendere dal furgone) finché ha spese; eliminare l'utente le elimina con lui.
+  payerId      String
+  payer        OutingParticipant @relation(fields: [payerId], references: [id], onDelete: Cascade)
+  amount       Decimal           @db.Decimal(10, 2)
+  description  String
+  createdById  String?
+  createdBy    User?             @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([outingId])
+  @@index([payerId])
 }

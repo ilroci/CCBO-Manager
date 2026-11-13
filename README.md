@@ -101,7 +101,8 @@ npm run dev
   o una disattivazione valgono subito, anche con un token già emesso.
 - Un utente si può **disattivare** (conserva lo storico) o **eliminare** (spariscono anche i
   suoi noleggi, le partecipazioni alle uscite e le relative riscossioni). Non si può eliminare
-  chi è responsabile di un'uscita finché non la si assegna a un altro istruttore. Un
+  chi è responsabile di un'uscita finché non la si assegna a un altro istruttore, né chi ha
+  pagato spese nei conti del furgone finché non le si elimina o assegna ad altri. Un
   amministratore non può togliersi il ruolo, disattivarsi o eliminarsi da solo.
 
 | Area | Admin | Istruttore | Socio |
@@ -127,7 +128,7 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `GET` | `/api/users/:id` | Admin |
 | `POST` | `/api/users` | Admin |
 | `PATCH` | `/api/users/:id` | Admin |
-| `DELETE` | `/api/users/:id` | Admin: elimina l'utente con noleggi, partecipazioni e riscossioni (non se responsabile di uscite) |
+| `DELETE` | `/api/users/:id` | Admin: elimina l'utente con noleggi, partecipazioni e riscossioni (non se responsabile di uscite o se ha pagato spese del furgone) |
 | `GET` | `/api/equipment?category=&status=&q=&includeArchived=` | autenticato (archiviati solo Admin) |
 | `GET` | `/api/equipment/:id` | autenticato |
 | `GET` | `/api/equipment/:id/photo` | pubblico (serve ai tag `<img>`) |
@@ -155,6 +156,8 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `PATCH` · `DELETE` | `/api/outings/:id/participants/:pid` | Admin, Istruttore |
 | `POST` | `/api/outings/:id/participants/:pid/return` | Admin, Istruttore (annullabile) |
 | `POST` | `/api/outings/:id/participants/:pid/payments/:category` | Admin, Istruttore: riscuote `RENTAL`, `TRANSPORT` o `VAN` (`{ paid }`, annullabile) |
+| `POST` | `/api/outings/:id/expenses` | Admin, Istruttore: spesa del furgone `{ payerId, amount, description }` |
+| `PATCH` · `DELETE` | `/api/outings/:id/expenses/:eid` | Admin, Istruttore |
 
 Errori: `{ error, details? }` con 400 (validazione), 401, 403, 404, 409 (email o numero di
 serie già in uso, eliminazione di un pezzo con storico).
@@ -247,6 +250,18 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   non può cambiare finché la riscossione non viene annullata: noleggio riscosso → voci e date
   bloccate (il materiale specifico resta modificabile); furgone o trasporto riscosso → modalità di viaggio bloccata. Rimuovere un socio
   elimina anche il suo noleggio e le sue riscossioni.
+- **Conti del furgone** (alla Splitwise): chi è a bordo del furgone registra le spese di viaggio
+  che ha anticipato (`OutingExpense`: chi ha pagato, importo, descrizione), per esempio
+  carburante e caselli. Il totale si divide in parti uguali tra **tutti i partecipanti a bordo**
+  (ospiti compresi); i centesimi avanzati vanno ai primi in ordine alfabetico, così le quote
+  sommano esattamente al totale. Il conguaglio non è salvato ma calcolato a ogni lettura
+  (`vanAccounts` nell'uscita): per ciascuno pagato, quota e saldo (positivo = riceve, negativo =
+  deve dare), più i trasferimenti minimi per pareggiare (chi deve dare di più paga chi deve
+  ricevere di più). Solo chi è a bordo può aver pagato una spesa: finché ha spese registrate non
+  può scendere dal furgone né essere rimosso dall'uscita (409), e l'utente non si può eliminare
+  (409). Annullare l'uscita elimina anche le sue spese. Nella scheda del partecipante, la riga
+  **costi vivi** della voce furgone mostra il suo saldo (deve dare / deve ricevere / in pari),
+  che si riscuote insieme alla quota furgone; la riscossione registra solo la quota.
 - **Quota individuale** = noleggio (voci × giorni dell'uscita) + servizio furgone, a tariffa
   fissa per uscita modificabile dall'admin nel Listino (`ServiceFee`):
   A) a bordo → **quota furgone 5 €** (VAN_SEAT); B) solo trasporto attrezzatura → **5 €**

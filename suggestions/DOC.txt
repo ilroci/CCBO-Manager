@@ -1,0 +1,5 @@
+MIGLIORARE VISUALIZZAZIONE MATERIALI
+cmq il menu quello esploso con tutte le immagini grandi crea un po di dispersione. perche da cell inizia a scorrere e non finisci mai, invece la visione compatta è molto piu comoda, si potrebbe pure pensare di fare una prima visuale in cui c'è solo il riepilogo dei materiali con lequantita e poi se ci clicchi entri nel dettaglio
+
+
+SPLITWAISA

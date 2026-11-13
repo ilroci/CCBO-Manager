@@ -123,6 +123,11 @@ export interface OutingParticipant {
   /** Noleggio + trasporto + quota furgone (costi vivi esclusi). */
   totalAmount: string;
   collections: Collection[];
+  /**
+   * Costi vivi: la sua parte dei conti del furgone (null = non è a bordo).
+   * `balance` positivo = deve ricevere, negativo = deve dare.
+   */
+  vanExpenses: { paid: string; share: string; balance: string } | null;
   rental: {
     id: string;
     status: RentalStatus;
@@ -132,6 +137,29 @@ export interface OutingParticipant {
     items: { id: string; itemId: string; returnedAt: string | null; item: EquipmentItem }[];
     charges: RentalCharge[];
   } | null;
+}
+
+/** Spesa di viaggio anticipata da un partecipante a bordo del furgone. */
+export interface OutingExpense {
+  id: string;
+  /** Partecipante (a bordo) che ha pagato */
+  payerId: string;
+  amount: string;
+  description: string;
+  createdAt: string;
+  createdBy: Person | null;
+}
+
+/**
+ * Conti del furgone, alla Splitwise: il totale delle spese si divide in parti uguali tra i
+ * partecipanti a bordo; `balance` positivo = deve ricevere, negativo = deve dare.
+ */
+export interface VanAccounts {
+  total: string;
+  expenses: OutingExpense[];
+  balances: { participantId: string; paid: string; share: string; balance: string }[];
+  /** Trasferimenti minimi per pareggiare i conti */
+  transfers: { fromId: string; toId: string; amount: string }[];
 }
 
 export interface Outing {
@@ -145,6 +173,7 @@ export interface Outing {
   vanSeats: number | null;
   notes: string | null;
   participants: OutingParticipant[];
+  vanAccounts: VanAccounts;
   totals: {
     participants: number;
     aboardVan: number;

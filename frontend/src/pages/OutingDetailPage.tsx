@@ -7,6 +7,7 @@ import { FormError } from "@/components/FormError";
 import { OutingFormDialog, type OutingEditing } from "@/components/OutingFormDialog";
 import { ParticipantCard } from "@/components/ParticipantCard";
 import { ParticipantWizard, type WizardTarget } from "@/components/ParticipantWizard";
+import { VanAccounts } from "@/components/VanAccounts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, getErrorMessage } from "@/lib/api";
@@ -233,6 +234,10 @@ export function OutingDetailPage() {
             );
           })}
         </div>
+      )}
+
+      {(outing.totals.aboardVan > 0 || outing.vanAccounts.expenses.length > 0) && (
+        <VanAccounts outing={outing} readOnly={!canEdit} onChange={setOuting} />
       )}
 
       <OutingFormDialog

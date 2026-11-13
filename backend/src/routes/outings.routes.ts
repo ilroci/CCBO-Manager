@@ -304,6 +304,9 @@ const updateParticipantSchema = z.object({
   guest: guestSchema.optional(),
 });
 
+/** Chi ha pagato spese del furgone deve restare a bordo, altrimenti i conti non tornano. */
+const hasExpenses = (outing: LoadedOuting, pid: string) => outing.expenses.some((e) => e.payerId === pid);
+
 function findParticipant(outing: LoadedOuting, pid: string) {
   const participant = outing.participants.find((p) => p.id === pid);
   if (!participant) throw notFound("Partecipante non trovato");
@@ -338,6 +341,12 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
   }
   if (daysChanged && paid.has(CollectionCategory.RENTAL)) {
     throw new HttpError(409, "Noleggio già riscosso: annulla la riscossione prima di cambiare i giorni di noleggio");
+  }
+  if (modeChanged && hasExpenses(outing, pid)) {
+    throw new HttpError(
+      409,
+      "Ha pagato spese del furgone: eliminale o assegnale a un altro partecipante prima di cambiare la modalità di viaggio",
+    );
   }
   const currentService = SERVICE_CATEGORY[participant.travelMode];
   if (modeChanged && currentService && paid.has(currentService)) {
@@ -375,7 +384,11 @@ outingsRouter.patch("/:id/participants/:pid", async (req, res) => {
 
 outingsRouter.delete("/:id/participants/:pid", async (req, res) => {
   const { id, pid } = participantParams.parse(req.params);
-  findParticipant(await loadOuting(id), pid);
+  const outing = await loadOuting(id);
+  findParticipant(outing, pid);
+  if (hasExpenses(outing, pid)) {
+    throw new HttpError(409, "Ha pagato spese del furgone: eliminale o assegnale a un altro partecipante prima di rimuoverlo");
+  }
   // Noleggio e riscossioni del socio vengono eliminati in cascata.
   await prisma.outingParticipant.delete({ where: { id: pid } });
   await respond(res, id);
@@ -426,5 +439,68 @@ outingsRouter.post("/:id/participants/:pid/payments/:category", async (req, res)
   await prisma.outingPayment.create({
     data: { participantId: pid, category, amount, confirmedById: req.user!.id },
   });
+  await respond(res, id);
+});
+
+// ---------------------------------------------------------------------------
+// Conti del furgone: spese anticipate da chi è a bordo, divise tra tutti i partecipanti a bordo
+// ---------------------------------------------------------------------------
+
+const amountSchema = z
+  .union([z.number(), z.string()])
+  .transform((value) => String(value).trim().replace(",", "."))
+  .pipe(
+    z
+      .string()
+      .regex(/^\d{1,6}(\.\d{1,2})?$/, "Importo non valido (es. 45 oppure 12,50)")
+      .refine((value) => Number(value) > 0, "L'importo deve essere maggiore di zero"),
+  );
+
+const expenseSchema = z.object({
+  /** Partecipante a bordo del furgone che ha pagato */
+  payerId: z.string().min(1),
+  amount: amountSchema,
+  description: z.string().trim().min(1, "Indica a cosa si riferisce la spesa").max(200),
+});
+
+const expenseParams = idParams.extend({ eid: z.string().min(1) });
+
+function assertPayerAboard(outing: LoadedOuting, payerId: string) {
+  const payer = outing.participants.find((p) => p.id === payerId);
+  if (!payer) throw badRequest("Chi ha pagato non partecipa all'uscita");
+  if (payer.travelMode !== TravelMode.VAN) throw badRequest("Le spese del furgone le paga solo chi è a bordo");
+}
+
+function findExpense(outing: LoadedOuting, eid: string) {
+  const expense = outing.expenses.find((e) => e.id === eid);
+  if (!expense) throw notFound("Spesa non trovata");
+  return expense;
+}
+
+/** POST /api/outings/:id/expenses { payerId, amount, description } */
+outingsRouter.post("/:id/expenses", async (req, res) => {
+  const { id } = idParams.parse(req.params);
+  const data = expenseSchema.parse(req.body);
+  const outing = await loadOuting(id);
+  assertPayerAboard(outing, data.payerId);
+  await prisma.outingExpense.create({ data: { ...data, outingId: id, createdById: req.user!.id } });
+  await respond(res, id, 201);
+});
+
+/** PATCH /api/outings/:id/expenses/:eid — corregge chi ha pagato, importo o descrizione. */
+outingsRouter.patch("/:id/expenses/:eid", async (req, res) => {
+  const { id, eid } = expenseParams.parse(req.params);
+  const data = expenseSchema.partial().parse(req.body);
+  const outing = await loadOuting(id);
+  findExpense(outing, eid);
+  if (data.payerId) assertPayerAboard(outing, data.payerId);
+  await prisma.outingExpense.update({ where: { id: eid }, data });
+  await respond(res, id);
+});
+
+outingsRouter.delete("/:id/expenses/:eid", async (req, res) => {
+  const { id, eid } = expenseParams.parse(req.params);
+  findExpense(await loadOuting(id), eid);
+  await prisma.outingExpense.delete({ where: { id: eid } });
   await respond(res, id);
 });

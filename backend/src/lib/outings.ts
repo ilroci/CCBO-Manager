@@ -9,6 +9,7 @@ import {
 } from "@prisma/client";
 import { calendarDays, formatDate } from "./dates";
 import { itemInclude, toItemDto } from "./equipment";
+import { computeBalances, fromCents, settleUp, toCents } from "./expenses";
 import { badRequest, HttpError } from "./http-error";
 import { CATEGORY_LABELS } from "./labels";
 import { chargesForOptions } from "./pricing";
@@ -259,6 +260,7 @@ export const outingInclude = {
       },
     },
   },
+  expenses: { orderBy: { createdAt: "asc" }, include: { createdBy: { select: personSelect } } },
 } satisfies Prisma.OutingInclude;
 
 type OutingWithRelations = Prisma.OutingGetPayload<{ include: typeof outingInclude }>;
@@ -313,6 +315,36 @@ const byName = (a: { firstName: string; lastName: string }, b: { firstName: stri
   a.lastName.localeCompare(b.lastName, "it", { sensitivity: "base" }) ||
   a.firstName.localeCompare(b.firstName, "it", { sensitivity: "base" });
 
+/**
+ * Conti del furgone: le spese anticipate da chi è a bordo, divise in parti uguali tra tutti i
+ * partecipanti a bordo (ordine alfabetico, che decide anche a chi vanno i centesimi avanzati),
+ * con il saldo di ciascuno e i trasferimenti per pareggiare.
+ */
+function vanAccounts(outing: OutingWithRelations, sorted: { id: string; travelMode: TravelMode }[]) {
+  const aboard = sorted.filter((p) => p.travelMode === TravelMode.VAN);
+  const expenses = outing.expenses.map((e) => ({ payerId: e.payerId, cents: toCents(e.amount) }));
+  const balances = computeBalances(aboard, expenses);
+  const total = expenses.reduce((sum, e) => sum + e.cents, 0);
+  return {
+    total: fromCents(total),
+    expenses: outing.expenses.map((e) => ({
+      id: e.id,
+      payerId: e.payerId,
+      amount: money(e.amount),
+      description: e.description,
+      createdAt: e.createdAt,
+      createdBy: e.createdBy,
+    })),
+    balances: balances.map((b) => ({
+      participantId: b.id,
+      paid: fromCents(b.paid),
+      share: fromCents(b.share),
+      balance: fromCents(b.balance),
+    })),
+    transfers: settleUp(balances).map((t) => ({ fromId: t.fromId, toId: t.toId, amount: fromCents(t.cents) })),
+  };
+}
+
 /** Forma pubblica dell'uscita, con i totali calcolati. */
 export function toOutingDto(outing: OutingWithRelations) {
   const participants = outing.participants.map((p) => ({
@@ -339,6 +371,8 @@ export function toOutingDto(outing: OutingWithRelations) {
     },
   }));
   participants.sort(byName);
+  const accounts = vanAccounts(outing, participants);
+  const balanceOf = new Map(accounts.balances.map(({ participantId, ...b }) => [participantId, b]));
 
   const total = outing.participants.reduce((sum, p) => sum.add(p.totalAmount), ZERO);
   const collected = outing.participants
@@ -357,7 +391,12 @@ export function toOutingDto(outing: OutingWithRelations) {
     vanSeats: outing.vanSeats,
     notes: outing.notes,
     createdAt: outing.createdAt,
-    participants,
+    participants: participants.map((p) => ({
+      ...p,
+      /** Costi vivi: la sua parte dei conti del furgone (null = non è a bordo). */
+      vanExpenses: balanceOf.get(p.id) ?? null,
+    })),
+    vanAccounts: accounts,
     totals: {
       participants: participants.length,
       aboardVan: participants.filter((p) => p.travelMode === TravelMode.VAN).length,

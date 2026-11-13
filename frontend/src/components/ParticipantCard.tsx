@@ -10,6 +10,30 @@ import type { Collection, CollectionCategory, OutingParticipant } from "@/lib/ty
 import { cn } from "@/lib/utils";
 
 /**
+ * Costi vivi del partecipante, dai conti del furgone: quanto deve dare o ricevere.
+ * `pending` = nessuna spesa ancora registrata, l'importo non è noto.
+ */
+function costiVivi(p: OutingParticipant) {
+  const e = p.vanExpenses;
+  if (!e || Number(e.share) === 0) return { kind: "pending" as const };
+  const balance = Number(e.balance);
+  return {
+    kind: balance < 0 ? ("give" as const) : balance > 0 ? ("receive" as const) : ("even" as const),
+    amount: Math.abs(balance),
+    ...e,
+  };
+}
+
+/** Testo breve accanto alla quota: "+ costi vivi", "+ 12,00 € costi vivi", "riceve 30,00 €"… */
+function costiViviSuffix(p: OutingParticipant) {
+  const c = costiVivi(p);
+  if (c.kind === "pending") return " + costi vivi";
+  if (c.kind === "give") return ` + ${formatEuro(c.amount)} costi vivi`;
+  if (c.kind === "receive") return ` · riceve ${formatEuro(c.amount)} di costi vivi`;
+  return " · costi vivi in pari";
+}
+
+/**
  * Scheda di un partecipante. Chiusa mostra solo nome e quota ancora da pagare; aperta,
  * una riga per ogni voce da riscuotere (noleggio, trasporto, furgone + costi vivi),
  * ciascuna con il proprio pulsante, perché si pagano in momenti diversi.
@@ -71,7 +95,7 @@ export function ParticipantCard({
               {unpaid.length > 0 && (
                 <span className="text-right">
                   <span className="font-semibold tabular-nums">{formatEuro(due)}</span>
-                  {expensesDue && <span className="text-xs text-muted-foreground"> + costi vivi</span>}
+                  {expensesDue && <span className="text-xs text-muted-foreground">{costiViviSuffix(p)}</span>}
                 </span>
               )}
               <Badge
@@ -206,10 +230,7 @@ function CollectionRow({
               <span className="text-muted-foreground">Quota furgone</span>
               <span className="tabular-nums">{formatEuro(c.amount)}</span>
             </div>
-            <div className="flex justify-between gap-4 sm:justify-start">
-              <span className="text-muted-foreground">Costi vivi (carburante e caselli)</span>
-              <span>da pagare, importo a parte</span>
-            </div>
+            <CostiViviLine participant={p} />
           </div>
         )}
 
@@ -224,7 +245,7 @@ function CollectionRow({
       <div className="flex items-center gap-2">
         <span className="font-semibold tabular-nums">
           {formatEuro(c.amount)}
-          {c.includesExpenses && <span className="font-normal text-muted-foreground"> + costi vivi</span>}
+          {c.includesExpenses && <span className="font-normal text-muted-foreground">{costiViviSuffix(p)}</span>}
         </span>
         {readOnly ? null : paid ? (
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => onCollect(false)}>
@@ -237,5 +258,36 @@ function CollectionRow({
         )}
       </div>
     </div>
+  );
+}
+
+/** Riga "Costi vivi" della voce furgone, con il saldo dei conti del furgone. */
+function CostiViviLine({ participant: p }: { participant: OutingParticipant }) {
+  const c = costiVivi(p);
+  return (
+    <>
+      <div className="flex justify-between gap-4 sm:justify-start">
+        <span className="text-muted-foreground">Costi vivi (carburante e caselli)</span>
+        {c.kind === "pending" ? (
+          <span>nessuna spesa registrata nei conti del furgone</span>
+        ) : (
+          <span
+            className={cn(
+              "tabular-nums",
+              c.kind === "give" && "text-red-700 dark:text-red-400",
+              c.kind === "receive" && "text-emerald-700 dark:text-emerald-400",
+            )}
+          >
+            {c.kind === "give" ? "deve dare " : c.kind === "receive" ? "deve ricevere " : "in pari"}
+            {c.kind !== "even" && <span className="font-semibold">{formatEuro(c.amount)}</span>}
+          </span>
+        )}
+      </div>
+      {c.kind !== "pending" && (
+        <div className="text-muted-foreground tabular-nums">
+          quota {formatEuro(c.share)} · ha anticipato {formatEuro(c.paid)}
+        </div>
+      )}
+    </>
   );
 }

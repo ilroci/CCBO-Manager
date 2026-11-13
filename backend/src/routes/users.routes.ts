@@ -110,7 +110,8 @@ usersRouter.patch("/:id", authorize(Role.ADMIN), async (req, res) => {
 /**
  * DELETE /api/users/:id — elimina l'utente con i suoi noleggi personali e le sue
  * partecipazioni alle uscite (comprese le riscossioni). Le uscite di cui è responsabile
- * vanno prima assegnate a un altro istruttore.
+ * vanno prima assegnate a un altro istruttore, e le spese che ha pagato nei conti del furgone
+ * eliminate o assegnate ad altri.
  */
 usersRouter.delete("/:id", authorize(Role.ADMIN), async (req, res) => {
   const { id } = idParamsSchema.parse(req.params);
@@ -124,6 +125,17 @@ usersRouter.delete("/:id", authorize(Role.ADMIN), async (req, res) => {
       outingsLed === 1
         ? "È responsabile di un'uscita: assegnala a un altro istruttore prima di eliminarlo"
         : `È responsabile di ${outingsLed} uscite: assegnale a un altro istruttore prima di eliminarlo`,
+    );
+  }
+
+  // Le spese anticipate entrano nei conti del furgone degli altri: eliminarle li cambierebbe.
+  const expensesPaid = await prisma.outingExpense.count({ where: { payer: { memberId: id } } });
+  if (expensesPaid > 0) {
+    throw new HttpError(
+      409,
+      expensesPaid === 1
+        ? "Ha pagato una spesa nei conti del furgone di un'uscita: eliminala o assegnala a un altro partecipante prima di eliminarlo"
+        : `Ha pagato ${expensesPaid} spese nei conti del furgone delle uscite: eliminale o assegnale ad altri partecipanti prima di eliminarlo`,
     );
   }
 
