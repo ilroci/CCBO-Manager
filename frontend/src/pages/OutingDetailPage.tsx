@@ -1,10 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Ban, Bus, Car, Loader2, MapPin, Package, PackageCheck, Pencil, UserPlus, type LucideIcon } from "lucide-react";
+import {
+  ArrowLeft,
+  Ban,
+  Bus,
+  Car,
+  LayoutList,
+  Loader2,
+  MapPin,
+  Package,
+  PackageCheck,
+  Pencil,
+  Table2,
+  UserPlus,
+  type LucideIcon,
+} from "lucide-react";
 import { useCanEdit } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FormError } from "@/components/FormError";
 import { OutingFormDialog, type OutingEditing } from "@/components/OutingFormDialog";
+import { OutingSummary } from "@/components/OutingSummary";
 import { ParticipantCard } from "@/components/ParticipantCard";
 import { ParticipantWizard, type WizardTarget } from "@/components/ParticipantWizard";
 import { VanAccounts } from "@/components/VanAccounts";
@@ -36,6 +51,8 @@ export function OutingDetailPage() {
   const [wizard, setWizard] = useState<WizardTarget>(undefined);
   const [confirm, setConfirm] = useState<Confirm>();
   const [busyId, setBusyId] = useState<string>();
+  /** Vista dei partecipanti: schede dettagliate o riepilogo tabellare. */
+  const [view, setView] = useState<"detail" | "summary">("detail");
 
   const load = useCallback(async () => {
     try {
@@ -182,8 +199,30 @@ export function OutingDetailPage() {
       <FormError message={error} />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Partecipanti</h2>
-        {canEdit && (
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-lg font-semibold">Partecipanti</h2>
+          {outing.participants.length > 0 && (
+            <div className="flex rounded-lg border p-0.5" role="group" aria-label="Vista dei partecipanti">
+              <Button
+                size="sm"
+                variant={view === "summary" ? "secondary" : "ghost"}
+                aria-pressed={view === "summary"}
+                onClick={() => setView("summary")}
+              >
+                <Table2 /> Riepilogo
+              </Button>
+              <Button
+                size="sm"
+                variant={view === "detail" ? "secondary" : "ghost"}
+                aria-pressed={view === "detail"}
+                onClick={() => setView("detail")}
+              >
+                <LayoutList /> Dettaglio
+              </Button>
+            </div>
+          )}
+        </div>
+        {canEdit && view === "detail" && (
         <div className="flex flex-wrap gap-2">
           {outing.totals.toReturn > 0 && (
             <Button variant="outline" onClick={() => void returnAll()}>
@@ -201,6 +240,8 @@ export function OutingDetailPage() {
         <p className="rounded-xl border border-dashed py-12 text-center text-muted-foreground">
           {canEdit ? "Nessun partecipante: aggiungi i soci con il pulsante qui sopra." : "Nessun partecipante."}
         </p>
+      ) : view === "summary" ? (
+        <OutingSummary outing={outing} />
       ) : (
         <div className="grid gap-6">
           {TRAVEL_MODES.map(({ value }) => {
@@ -236,7 +277,7 @@ export function OutingDetailPage() {
         </div>
       )}
 
-      {(outing.totals.aboardVan > 0 || outing.vanAccounts.expenses.length > 0) && (
+      {view === "detail" && (outing.totals.aboardVan > 0 || outing.vanAccounts.expenses.length > 0) && (
         <VanAccounts outing={outing} readOnly={!canEdit} onChange={setOuting} />
       )}
 
