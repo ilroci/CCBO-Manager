@@ -73,6 +73,7 @@ enum CollectionCategory {
   RENTAL // (1) noleggio attrezzatura
   TRANSPORT // (2) solo trasporto attrezzatura
   VAN // (3) quota furgone + costi vivi, riscossi insieme
+  EXTRA // (4) spese extra dell'uscita (es. campo slalom), a testa per tutti i partecipanti
 }
 
 // ---------------------------------------------------------------------
@@ -96,6 +97,7 @@ model User {
   participations      OutingParticipant[]
   paymentsConfirmed   OutingPayment[]
   expensesRecorded    OutingExpense[]
+  extraFeesRecorded   OutingExtraFee[]
   rentalOptionUpdates RentalOption[]
   serviceFeeUpdates   ServiceFee[]
 
@@ -272,6 +274,7 @@ model Outing {
   notes        String?
   participants OutingParticipant[]
   expenses     OutingExpense[]
+  extraFees    OutingExtraFee[]
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
 
@@ -318,7 +321,8 @@ model OutingParticipant {
   rentalAmount    Decimal @default(0) @db.Decimal(10, 2) // (1)
   transportAmount Decimal @default(0) @db.Decimal(10, 2) // (2)
   vanSeatAmount   Decimal @default(0) @db.Decimal(10, 2) // (3) quota furgone
-  totalAmount     Decimal @default(0) @db.Decimal(10, 2) // (1)+(2)+(3), costi vivi esclusi
+  extraAmount     Decimal @default(0) @db.Decimal(10, 2) // (4) somma delle spese extra dell'uscita
+  totalAmount     Decimal @default(0) @db.Decimal(10, 2) // (1)+(2)+(3)+(4), costi vivi esclusi
 
   payments OutingPayment[]
   /// Spese di viaggio anticipate da chi è a bordo del furgone (conti del furgone)
@@ -351,4 +355,21 @@ model OutingExpense {
 
   @@index([outingId])
   @@index([payerId])
+}
+
+/// Spesa extra dell'uscita (es. campo slalom): importo a testa, addebitato a tutti i
+/// partecipanti come voce da riscuotere EXTRA. Non si modifica se qualcuno l'ha già pagata.
+model OutingExtraFee {
+  id          String   @id @default(cuid())
+  outingId    String
+  outing      Outing   @relation(fields: [outingId], references: [id], onDelete: Cascade)
+  description String
+  /// Importo a testa
+  amount      Decimal  @db.Decimal(10, 2)
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([outingId])
 }

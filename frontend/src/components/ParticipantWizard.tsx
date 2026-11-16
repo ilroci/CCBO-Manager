@@ -647,6 +647,12 @@ export function ParticipantWizard({
                       <span className="tabular-nums">{formatEuro(0)}</span>
                     </div>
                   )}
+                  {Number(quote.extraAmount) > 0 && (
+                    <div className="flex justify-between gap-2">
+                      <span>Spese extra dell'uscita</span>
+                      <span className="tabular-nums">{formatEuro(quote.extraAmount)}</span>
+                    </div>
+                  )}
                   <div className="mt-1 flex justify-between gap-2 border-t pt-2 text-base font-semibold">
                     <span>Quota individuale</span>
                     <span className="tabular-nums">
@@ -655,7 +661,7 @@ export function ParticipantWizard({
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Noleggio, trasporto e furgone si riscuotono separatamente dalla pagina dell'uscita.
+                    Noleggio, trasporto, furgone e spese extra si riscuotono separatamente dalla pagina dell'uscita.
                   </p>
                 </>
               )}

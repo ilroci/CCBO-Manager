@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCanEdit } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ExtraFees } from "@/components/ExtraFees";
 import { FormError } from "@/components/FormError";
 import { OutingFormDialog, type OutingEditing } from "@/components/OutingFormDialog";
 import { OutingSummary } from "@/components/OutingSummary";
@@ -263,6 +264,7 @@ export function OutingDetailPage() {
                   <ParticipantCard
                     key={p.id}
                     participant={p}
+                    extraFees={outing.extraFees}
                     busy={busyId === p.id}
                     readOnly={!canEdit}
                     onEdit={() => setWizard(p)}
@@ -275,6 +277,10 @@ export function OutingDetailPage() {
             );
           })}
         </div>
+      )}
+
+      {view === "detail" && (outing.participants.length > 0 || outing.extraFees.length > 0) && (
+        <ExtraFees outing={outing} readOnly={!canEdit} onChange={setOuting} />
       )}
 
       {view === "detail" && (outing.totals.aboardVan > 0 || outing.vanAccounts.expenses.length > 0) && (

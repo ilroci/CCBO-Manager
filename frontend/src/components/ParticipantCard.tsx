@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatEuro } from "@/lib/money";
 import { COLLECTION_LABELS, TRAVEL_MODE_LABELS } from "@/lib/outings";
-import type { Collection, CollectionCategory, OutingParticipant } from "@/lib/types";
+import type { Collection, CollectionCategory, OutingExtraFee, OutingParticipant } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -40,6 +40,7 @@ function costiViviSuffix(p: OutingParticipant) {
  */
 export function ParticipantCard({
   participant: p,
+  extraFees,
   busy,
   readOnly = false,
   onEdit,
@@ -48,6 +49,8 @@ export function ParticipantCard({
   onReturn,
 }: {
   participant: OutingParticipant;
+  /** Spese extra dell'uscita, per il dettaglio della voce EXTRA. */
+  extraFees: OutingExtraFee[];
   busy: boolean;
   /** Sola consultazione: niente pulsanti di modifica, riscossione o rientro. */
   readOnly?: boolean;
@@ -140,6 +143,7 @@ export function ParticipantCard({
                   key={c.category}
                   collection={c}
                   participant={p}
+                  extraFees={extraFees}
                   busy={busy}
                   readOnly={readOnly}
                   onCollect={(paid) => onCollect(c.category, paid)}
@@ -177,12 +181,14 @@ export function ParticipantCard({
 function CollectionRow({
   collection: c,
   participant: p,
+  extraFees,
   busy,
   readOnly,
   onCollect,
 }: {
   collection: Collection;
   participant: OutingParticipant;
+  extraFees: OutingExtraFee[];
   busy: boolean;
   readOnly: boolean;
   onCollect: (paid: boolean) => void;
@@ -231,6 +237,12 @@ function CollectionRow({
               <span className="tabular-nums">{formatEuro(c.amount)}</span>
             </div>
             <CostiViviLine participant={p} />
+          </div>
+        )}
+
+        {c.category === "EXTRA" && (
+          <div className="text-xs text-muted-foreground">
+            {extraFees.map((f) => `${f.description} ${formatEuro(f.amount)}`).join(" · ")}
           </div>
         )}
 

@@ -94,7 +94,7 @@ export interface Rental {
 
 export type TravelMode = "VAN" | "TRANSPORT_ONLY" | "AUTONOMOUS";
 /** Voci riscosse separatamente in un'uscita. */
-export type CollectionCategory = "RENTAL" | "TRANSPORT" | "VAN";
+export type CollectionCategory = "RENTAL" | "TRANSPORT" | "VAN" | "EXTRA";
 
 export interface Collection {
   category: CollectionCategory;
@@ -120,7 +120,9 @@ export interface OutingParticipant {
   rentalAmount: string;
   transportAmount: string;
   vanSeatAmount: string;
-  /** Noleggio + trasporto + quota furgone (costi vivi esclusi). */
+  /** Somma delle spese extra dell'uscita (uguale per tutti i partecipanti). */
+  extraAmount: string;
+  /** Noleggio + trasporto + quota furgone + spese extra (costi vivi esclusi). */
   totalAmount: string;
   collections: Collection[];
   /**
@@ -150,6 +152,16 @@ export interface OutingExpense {
   createdBy: Person | null;
 }
 
+/** Spesa extra dell'uscita (es. campo slalom): importo a testa per tutti i partecipanti. */
+export interface OutingExtraFee {
+  id: string;
+  description: string;
+  /** Importo a testa */
+  amount: string;
+  createdAt: string;
+  createdBy: Person | null;
+}
+
 /**
  * Conti del furgone, alla Splitwise: il totale delle spese si divide in parti uguali tra i
  * partecipanti a bordo; `balance` positivo = deve ricevere, negativo = deve dare.
@@ -174,6 +186,7 @@ export interface Outing {
   notes: string | null;
   participants: OutingParticipant[];
   vanAccounts: VanAccounts;
+  extraFees: OutingExtraFee[];
   totals: {
     participants: number;
     aboardVan: number;
@@ -199,5 +212,6 @@ export interface ParticipantQuote {
   rentalAmount: string;
   transportAmount: string;
   vanSeatAmount: string;
+  extraAmount: string;
   totalAmount: string;
 }

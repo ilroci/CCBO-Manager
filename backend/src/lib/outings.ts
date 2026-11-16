@@ -35,6 +35,27 @@ export async function serviceAmounts(db: Db, travelMode: TravelMode) {
   };
 }
 
+/** Spese extra dell'uscita (es. campo slalom): somma degli importi a testa. */
+export async function extraAmountOf(db: Db, outingId: string) {
+  const { _sum } = await db.outingExtraFee.aggregate({ where: { outingId }, _sum: { amount: true } });
+  return _sum.amount ?? ZERO;
+}
+
+/**
+ * Applica le spese extra a tutti i partecipanti dell'uscita, ricalcolando il totale di ciascuno.
+ * Da chiamare dopo ogni modifica alle spese extra.
+ */
+export async function syncExtraFees(tx: Db, outingId: string) {
+  const extraAmount = await extraAmountOf(tx, outingId);
+  const participants = await tx.outingParticipant.findMany({ where: { outingId } });
+  for (const p of participants) {
+    await tx.outingParticipant.update({
+      where: { id: p.id },
+      data: { extraAmount, totalAmount: p.rentalAmount.add(p.transportAmount).add(p.vanSeatAmount).add(extraAmount) },
+    });
+  }
+}
+
 /**
  * Noleggio di un partecipante: le voci di listino scelte (vista rapida, determinano il prezzo)
  * e, facoltativamente, i pezzi specifici assegnati (vista di dettaglio, bloccano la disponibilità).
@@ -87,11 +108,12 @@ async function resolveRentalSpec(db: Db, spec: RentalSpec) {
  * Quota individuale di un partecipante, senza salvare nulla (riepilogo del wizard):
  * (1) noleggio = voci di listino scelte × giorni di noleggio (di default tutta l'uscita);
  * (2) solo trasporto attrezzatura = tariffa fissa per uscita;
- * (3) quota furgone = tariffa fissa per uscita, più i costi vivi che non hanno importo.
+ * (3) quota furgone = tariffa fissa per uscita, più i costi vivi che non hanno importo;
+ * (4) spese extra dell'uscita, uguali per tutti.
  */
 export async function quoteParticipant(
   db: Db,
-  outing: Pick<Outing, "startDate" | "endDate">,
+  outing: Pick<Outing, "id" | "startDate" | "endDate">,
   spec: RentalSpec,
   travelMode: TravelMode,
 ) {
@@ -100,11 +122,13 @@ export async function quoteParticipant(
   const rental = resolved ? chargesForOptions(resolved.options, days) : null;
   const rentalAmount = rental?.total ?? ZERO;
   const services = await serviceAmounts(db, travelMode);
+  const extraAmount = await extraAmountOf(db, outing.id);
   return {
     rental,
     rentalAmount,
     ...services,
-    totalAmount: rentalAmount.add(services.transportAmount).add(services.vanSeatAmount),
+    extraAmount,
+    totalAmount: rentalAmount.add(services.transportAmount).add(services.vanSeatAmount).add(extraAmount),
   };
 }
 
@@ -119,11 +143,12 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((
  * - `datesChanged`: stesse voci, prezzo giornaliero già applicato × nuovi giorni (i giorni
  *   ridotti restano tali, ma non oltre la durata dell'uscita).
  * - nessuno dei due: il noleggio resta com'è (es. cambio di sola modalità di viaggio).
- * Quota furgone / trasporto e totale si ricalcolano sempre dalla modalità di viaggio.
+ * Quota furgone / trasporto, spese extra e totale si ricalcolano sempre (modalità di viaggio
+ * e spese extra dell'uscita).
  */
 export async function syncParticipant(
   tx: Db,
-  outing: Pick<Outing, "startDate" | "endDate">,
+  outing: Pick<Outing, "id" | "startDate" | "endDate">,
   participant: { id: string; memberId: string | null; travelMode: TravelMode },
   change: { spec?: RentalSpec; datesChanged?: boolean } = {},
 ) {
@@ -201,12 +226,14 @@ export async function syncParticipant(
   const rental = await tx.rental.findUnique({ where: { participantId: participant.id }, select: { total: true } });
   const rentalAmount = rental?.total ?? ZERO;
   const services = await serviceAmounts(tx, participant.travelMode);
+  const extraAmount = await extraAmountOf(tx, outing.id);
   await tx.outingParticipant.update({
     where: { id: participant.id },
     data: {
       rentalAmount,
       ...services,
-      totalAmount: rentalAmount.add(services.transportAmount).add(services.vanSeatAmount),
+      extraAmount,
+      totalAmount: rentalAmount.add(services.transportAmount).add(services.vanSeatAmount).add(extraAmount),
     },
   });
 }
@@ -261,6 +288,7 @@ export const outingInclude = {
     },
   },
   expenses: { orderBy: { createdAt: "asc" }, include: { createdBy: { select: personSelect } } },
+  extraFees: { orderBy: { createdAt: "asc" }, include: { createdBy: { select: personSelect } } },
 } satisfies Prisma.OutingInclude;
 
 type OutingWithRelations = Prisma.OutingGetPayload<{ include: typeof outingInclude }>;
@@ -270,7 +298,7 @@ const money = (value: Prisma.Decimal) => value.toFixed(2);
 
 /**
  * Voci da riscuotere del partecipante, ognuna con il suo stato di riscossione:
- * noleggio (se c'è), trasporto (B) oppure quota furgone + costi vivi (A).
+ * noleggio (se c'è), trasporto (B) oppure quota furgone + costi vivi (A), spese extra (se ci sono).
  */
 function collections(p: ParticipantWithRelations) {
   const list: { category: CollectionCategory; amount: Prisma.Decimal; includesExpenses: boolean }[] = [];
@@ -280,6 +308,9 @@ function collections(p: ParticipantWithRelations) {
   }
   if (p.travelMode === TravelMode.VAN) {
     list.push({ category: CollectionCategory.VAN, amount: p.vanSeatAmount, includesExpenses: true });
+  }
+  if (p.extraAmount.gt(0)) {
+    list.push({ category: CollectionCategory.EXTRA, amount: p.extraAmount, includesExpenses: false });
   }
   return list.map((c) => {
     const payment = p.payments.find((pay) => pay.category === c.category);
@@ -358,6 +389,7 @@ export function toOutingDto(outing: OutingWithRelations) {
     rentalAmount: money(p.rentalAmount),
     transportAmount: money(p.transportAmount),
     vanSeatAmount: money(p.vanSeatAmount),
+    extraAmount: money(p.extraAmount),
     totalAmount: money(p.totalAmount),
     collections: collections(p),
     rental: p.rental && {
@@ -397,6 +429,14 @@ export function toOutingDto(outing: OutingWithRelations) {
       vanExpenses: balanceOf.get(p.id) ?? null,
     })),
     vanAccounts: accounts,
+    /** Spese extra (importo a testa), addebitate a tutti i partecipanti. */
+    extraFees: outing.extraFees.map((f) => ({
+      id: f.id,
+      description: f.description,
+      amount: money(f.amount),
+      createdAt: f.createdAt,
+      createdBy: f.createdBy,
+    })),
     totals: {
       participants: participants.length,
       aboardVan: participants.filter((p) => p.travelMode === TravelMode.VAN).length,

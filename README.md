@@ -155,9 +155,11 @@ a nascondere menu e pagine. Il controllo vero è nel backend (`authorize(...)` i
 | `POST` | `/api/outings/:id/participants` | Admin, Istruttore (wizard): `memberId` oppure `guest: { firstName, lastName, phone? }` |
 | `PATCH` · `DELETE` | `/api/outings/:id/participants/:pid` | Admin, Istruttore |
 | `POST` | `/api/outings/:id/participants/:pid/return` | Admin, Istruttore (annullabile) |
-| `POST` | `/api/outings/:id/participants/:pid/payments/:category` | Admin, Istruttore: riscuote `RENTAL`, `TRANSPORT` o `VAN` (`{ paid }`, annullabile) |
+| `POST` | `/api/outings/:id/participants/:pid/payments/:category` | Admin, Istruttore: riscuote `RENTAL`, `TRANSPORT`, `VAN` o `EXTRA` (`{ paid }`, annullabile) |
 | `POST` | `/api/outings/:id/expenses` | Admin, Istruttore: spesa del furgone `{ payerId, amount, description }` |
 | `PATCH` · `DELETE` | `/api/outings/:id/expenses/:eid` | Admin, Istruttore |
+| `POST` | `/api/outings/:id/extra-fees` | Admin, Istruttore: spesa extra a testa `{ description, amount }` |
+| `PATCH` · `DELETE` | `/api/outings/:id/extra-fees/:fid` | Admin, Istruttore (409 se qualcuno l'ha già riscossa) |
 
 Errori: `{ error, details? }` con 400 (validazione), 401, 403, 404, 409 (email o numero di
 serie già in uso, eliminazione di un pezzo con storico).
@@ -243,10 +245,10 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   `memberId` null): non diventa un utente e non ha un accesso. Per il resto vale tutto come per un
   socio (noleggio, viaggio, riscossioni). Il suo noleggio è un `Rental` senza `memberId`, visibile
   solo nell'elenco di tutti i noleggi dello staff.
-- **Riscossioni**: ogni partecipante ha fino a tre voci, riscosse separatamente e anche in
+- **Riscossioni**: ogni partecipante ha fino a quattro voci, riscosse separatamente e anche in
   momenti diversi (`OutingPayment`, una per voce, con data e chi l'ha confermata):
   (1) **noleggio**, (2) **trasporto attrezzatura**, (3) **quota furgone + costi vivi**, mostrati
-  separati ma riscossi insieme; i costi vivi non hanno importo nel gestionale. Una voce riscossa
+  separati ma riscossi insieme (i costi vivi non hanno importo nel gestionale), (4) **spese extra**. Una voce riscossa
   non può cambiare finché la riscossione non viene annullata: noleggio riscosso → voci e date
   bloccate (il materiale specifico resta modificabile); furgone o trasporto riscosso → modalità di viaggio bloccata. Rimuovere un socio
   elimina anche il suo noleggio e le sue riscossioni.
@@ -262,7 +264,13 @@ DATABASE_URL="<url neon>" SEED_PASSWORD="<password robusta>" SEED_DEMO_DATA=fals
   (409). Annullare l'uscita elimina anche le sue spese. Nella scheda del partecipante, la riga
   **costi vivi** della voce furgone mostra il suo saldo (deve dare / deve ricevere / in pari),
   che si riscuote insieme alla quota furgone; la riscossione registra solo la quota.
-- **Quota individuale** = noleggio (voci × giorni dell'uscita) + servizio furgone, a tariffa
+- **Spese extra**: costi dell'uscita che riguardano tutti, per esempio l'ingresso al campo slalom
+  (`OutingExtraFee`: descrizione e importo **a testa**). La loro somma si addebita a **tutti i
+  partecipanti**, compresi ospiti, autonomi e chi si aggiunge dopo (`OutingParticipant.extraAmount`,
+  compreso nel totale), ed è la voce da riscuotere `EXTRA`. Finché qualcuno ha già riscosso la voce
+  extra, le spese extra non si possono aggiungere, modificare o eliminare (409): prima si annullano
+  quelle riscossioni. Annullare l'uscita le elimina.
+- **Quota individuale** = noleggio (voci × giorni dell'uscita) + servizio furgone + spese extra; il servizio furgone ha una tariffa
   fissa per uscita modificabile dall'admin nel Listino (`ServiceFee`):
   A) a bordo → **quota furgone 5 €** (VAN_SEAT); B) solo trasporto attrezzatura → **5 €**
   (EQUIPMENT_TRANSPORT); C) autonomo → 0 €. Chi è a bordo paga anche i **costi vivi**

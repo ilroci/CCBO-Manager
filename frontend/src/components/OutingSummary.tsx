@@ -33,6 +33,9 @@ export function OutingSummary({ outing }: { outing: Outing }) {
   );
   const rentalTotal = rows.reduce((sum, p) => sum + Number(p.rentalAmount), 0);
   const vanTotal = rows.reduce((sum, p) => sum + (vanCosts(p)?.total ?? 0), 0);
+  /** La colonna delle spese extra compare solo se l'uscita ne ha. */
+  const hasExtra = outing.extraFees.length > 0;
+  const extraTotal = rows.reduce((sum, p) => sum + Number(p.extraAmount), 0);
 
   return (
     <>
@@ -49,6 +52,12 @@ export function OutingSummary({ outing }: { outing: Outing }) {
               <div className="text-xs font-medium text-muted-foreground">Spese del furgone</div>
               <VanCell participant={p} />
             </div>
+            {hasExtra && (
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">Spese extra</div>
+                <ExtraCell participant={p} />
+              </div>
+            )}
             <div>
               <div className="text-xs font-medium text-muted-foreground">Riscosso</div>
               <CollectedCell participant={p} />
@@ -58,6 +67,7 @@ export function OutingSummary({ outing }: { outing: Outing }) {
         <div className="flex justify-between gap-3 bg-muted/50 p-3 text-sm font-medium tabular-nums">
           <span>Noleggio {formatEuro(rentalTotal)}</span>
           <span>Furgone {formatEuro(vanTotal)}</span>
+          {hasExtra && <span>Extra {formatEuro(extraTotal)}</span>}
         </div>
         <div className="bg-muted/50 px-3 pb-3 text-sm font-medium tabular-nums">
           Riscosso {formatEuro(outing.totals.collected)} su {formatEuro(outing.totals.total)}
@@ -72,6 +82,7 @@ export function OutingSummary({ outing }: { outing: Outing }) {
               <TableHead className="px-4">Socio</TableHead>
               <TableHead>Materiale noleggiato</TableHead>
               <TableHead>Spese del furgone</TableHead>
+              {hasExtra && <TableHead>Spese extra</TableHead>}
               <TableHead className="px-4">Riscosso</TableHead>
             </TableRow>
           </TableHeader>
@@ -87,6 +98,11 @@ export function OutingSummary({ outing }: { outing: Outing }) {
                 <TableCell className="whitespace-normal">
                   <VanCell participant={p} />
                 </TableCell>
+                {hasExtra && (
+                  <TableCell className="text-right">
+                    <ExtraCell participant={p} />
+                  </TableCell>
+                )}
                 <TableCell className="px-4">
                   <CollectedCell participant={p} />
                 </TableCell>
@@ -98,6 +114,7 @@ export function OutingSummary({ outing }: { outing: Outing }) {
               <TableCell className="px-4">Totale</TableCell>
               <TableCell className="text-right tabular-nums">{formatEuro(rentalTotal)}</TableCell>
               <TableCell className="text-right tabular-nums">{formatEuro(vanTotal)}</TableCell>
+              {hasExtra && <TableCell className="text-right tabular-nums">{formatEuro(extraTotal)}</TableCell>}
               <TableCell className="px-4 tabular-nums">
                 {formatEuro(outing.totals.collected)} su {formatEuro(outing.totals.total)}
               </TableCell>
@@ -163,6 +180,10 @@ function VanCell({ participant: p }: { participant: OutingParticipant }) {
       )}
     </AmountRow>
   );
+}
+
+function ExtraCell({ participant: p }: { participant: OutingParticipant }) {
+  return <span className="font-semibold tabular-nums">{formatEuro(p.extraAmount)}</span>;
 }
 
 /** Stato delle riscossioni: badge complessivo e una riga per voce (noleggio, trasporto, furgone). */

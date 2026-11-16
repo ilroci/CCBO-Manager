@@ -9,6 +9,7 @@ import {
   outingInclude,
   quoteParticipant,
   SERVICE_CATEGORY,
+  syncExtraFees,
   syncParticipant,
   toOutingDto,
 } from "../lib/outings";
@@ -21,7 +22,7 @@ import { authenticate, authorize } from "../middleware/auth";
  * operare su qualunque uscita, così un collega può subentrare.
  *
  * Un'uscita resta sempre modificabile (dati, date, partecipanti) finché non viene annullata.
- * Le voci di ogni socio (noleggio, trasporto, furgone + costi vivi) si riscuotono separatamente:
+ * Le voci di ogni socio (noleggio, trasporto, furgone + costi vivi, spese extra) si riscuotono separatamente:
  * una voce riscossa non può cambiare finché la riscossione non viene annullata.
  */
 export const outingsRouter = Router();
@@ -255,6 +256,7 @@ outingsRouter.post("/:id/quote", async (req, res) => {
     rentalAmount: quote.rentalAmount.toFixed(2),
     transportAmount: quote.transportAmount.toFixed(2),
     vanSeatAmount: quote.vanSeatAmount.toFixed(2),
+    extraAmount: quote.extraAmount.toFixed(2),
     totalAmount: quote.totalAmount.toFixed(2),
   });
 });
@@ -411,7 +413,7 @@ const paymentParams = participantParams.extend({ category: z.enum(CollectionCate
 /**
  * POST /api/outings/:id/participants/:pid/payments/:category { paid } — riscuote (o annulla
  * la riscossione di) una singola voce: RENTAL noleggio, TRANSPORT trasporto attrezzatura,
- * VAN quota furgone insieme ai costi vivi.
+ * VAN quota furgone insieme ai costi vivi, EXTRA spese extra dell'uscita.
  */
 outingsRouter.post("/:id/participants/:pid/payments/:category", async (req, res) => {
   const { id, pid, category } = paymentParams.parse(req.params);
@@ -430,7 +432,9 @@ outingsRouter.post("/:id/participants/:pid/payments/:category", async (req, res)
       ? participant.rental && participant.rentalAmount
       : category === CollectionCategory.TRANSPORT
         ? participant.travelMode === TravelMode.TRANSPORT_ONLY && participant.transportAmount
-        : participant.travelMode === TravelMode.VAN && participant.vanSeatAmount;
+        : category === CollectionCategory.VAN
+          ? participant.travelMode === TravelMode.VAN && participant.vanSeatAmount
+          : participant.extraAmount.gt(0) && participant.extraAmount;
   if (!amount) throw badRequest("Questa voce non riguarda il socio");
   if (participant.payments.some((pay) => pay.category === category)) {
     throw new HttpError(409, "Voce già riscossa");
@@ -502,5 +506,75 @@ outingsRouter.delete("/:id/expenses/:eid", async (req, res) => {
   const { id, eid } = expenseParams.parse(req.params);
   findExpense(await loadOuting(id), eid);
   await prisma.outingExpense.delete({ where: { id: eid } });
+  await respond(res, id);
+});
+
+// ---------------------------------------------------------------------------
+// Spese extra: importo a testa (es. campo slalom) addebitato a tutti i partecipanti
+// ---------------------------------------------------------------------------
+
+const extraFeeSchema = z.object({
+  description: z.string().trim().min(1, "Indica a cosa si riferisce la spesa").max(200),
+  /** Importo a testa */
+  amount: amountSchema,
+});
+
+const extraFeeParams = idParams.extend({ fid: z.string().min(1) });
+
+/**
+ * Le spese extra si sommano in un'unica voce EXTRA per partecipante: finché qualcuno l'ha
+ * riscossa, non si possono aggiungere, modificare o eliminare (gli importi non tornerebbero).
+ */
+function assertExtraNotCollected(outing: LoadedOuting) {
+  if (outing.participants.some((p) => p.payments.some((pay) => pay.category === CollectionCategory.EXTRA))) {
+    throw new HttpError(
+      409,
+      "Spese extra già riscosse da qualche partecipante: annulla quelle riscossioni prima di modificarle",
+    );
+  }
+}
+
+function findExtraFee(outing: LoadedOuting, fid: string) {
+  const fee = outing.extraFees.find((f) => f.id === fid);
+  if (!fee) throw notFound("Spesa extra non trovata");
+  return fee;
+}
+
+/** POST /api/outings/:id/extra-fees { description, amount } — importo a testa per tutti i partecipanti. */
+outingsRouter.post("/:id/extra-fees", async (req, res) => {
+  const { id } = idParams.parse(req.params);
+  const data = extraFeeSchema.parse(req.body);
+  const outing = await loadOuting(id);
+  assertExtraNotCollected(outing);
+  await prisma.$transaction(async (tx) => {
+    await tx.outingExtraFee.create({ data: { ...data, outingId: id, createdById: req.user!.id } });
+    await syncExtraFees(tx, id);
+  });
+  await respond(res, id, 201);
+});
+
+/** PATCH /api/outings/:id/extra-fees/:fid — corregge descrizione o importo. */
+outingsRouter.patch("/:id/extra-fees/:fid", async (req, res) => {
+  const { id, fid } = extraFeeParams.parse(req.params);
+  const data = extraFeeSchema.partial().parse(req.body);
+  const outing = await loadOuting(id);
+  findExtraFee(outing, fid);
+  assertExtraNotCollected(outing);
+  await prisma.$transaction(async (tx) => {
+    await tx.outingExtraFee.update({ where: { id: fid }, data });
+    await syncExtraFees(tx, id);
+  });
+  await respond(res, id);
+});
+
+outingsRouter.delete("/:id/extra-fees/:fid", async (req, res) => {
+  const { id, fid } = extraFeeParams.parse(req.params);
+  const outing = await loadOuting(id);
+  findExtraFee(outing, fid);
+  assertExtraNotCollected(outing);
+  await prisma.$transaction(async (tx) => {
+    await tx.outingExtraFee.delete({ where: { id: fid } });
+    await syncExtraFees(tx, id);
+  });
   await respond(res, id);
 });

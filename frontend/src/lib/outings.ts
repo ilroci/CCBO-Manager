@@ -5,6 +5,7 @@ export const COLLECTION_LABELS: Record<CollectionCategory, string> = {
   RENTAL: "Noleggio attrezzatura",
   TRANSPORT: "Trasporto attrezzatura",
   VAN: "Furgone",
+  EXTRA: "Spese extra",
 };
 
 /** Fase dell'uscita: ricavata dalle date, non è uno stato salvato. */
